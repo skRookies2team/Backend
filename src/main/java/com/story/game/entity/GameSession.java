@@ -24,6 +24,10 @@ public class GameSession {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
     @Column(name = "story_data_id", nullable = false)
     private Long storyDataId;
 

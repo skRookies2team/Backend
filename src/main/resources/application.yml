@@ -32,6 +32,12 @@ cors:
 ai-server:
   url: ${AI_SERVER_URL:http://localhost:8000}
 
+# JWT configuration
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-please-change-this-in-production}
+  access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:3600000}  # 1 hour in milliseconds
+  refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:604800000}  # 7 days in milliseconds
+
 # Logging
 logging:
   level:
