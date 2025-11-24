@@ -3,6 +3,8 @@ package com.story.game.controller;
 import com.story.game.repository.GameSessionRepository;
 import com.story.game.repository.StoryDataRepository;
 import com.story.game.service.StoryGenerationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -19,6 +21,7 @@ import java.util.Map;
 @RequestMapping("/api/health")
 @RequiredArgsConstructor
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
+@Tag(name = "Health Check", description = "서버 및 연결 상태 확인 API")
 public class HealthCheckController {
 
     private final DataSource dataSource;
@@ -26,10 +29,8 @@ public class HealthCheckController {
     private final GameSessionRepository gameSessionRepository;
     private final StoryGenerationService storyGenerationService;
 
-    /**
-     * 전체 시스템 연결 상태 확인
-     */
     @GetMapping
+    @Operation(summary = "전체 시스템 상태 확인", description = "서버, 데이터베이스, AI 서버의 연결 상태를 확인합니다")
     public ResponseEntity<Map<String, Object>> healthCheck() {
         Map<String, Object> status = new HashMap<>();
 
@@ -51,10 +52,8 @@ public class HealthCheckController {
         return ResponseEntity.ok(status);
     }
 
-    /**
-     * 데이터베이스 상세 상태
-     */
     @GetMapping("/database")
+    @Operation(summary = "데이터베이스 상태 확인", description = "데이터베이스 연결 상태 및 저장된 데이터 개수를 확인합니다")
     public ResponseEntity<Map<String, Object>> databaseStatus() {
         Map<String, Object> dbStatus = new HashMap<>();
 
@@ -82,10 +81,8 @@ public class HealthCheckController {
         return ResponseEntity.ok(dbStatus);
     }
 
-    /**
-     * AI 서버 상세 상태
-     */
     @GetMapping("/ai-server")
+    @Operation(summary = "AI 서버 상태 확인", description = "Python AI 서버의 연결 상태를 확인합니다")
     public ResponseEntity<Map<String, Object>> aiServerStatus() {
         Map<String, Object> aiStatus = new HashMap<>();
 

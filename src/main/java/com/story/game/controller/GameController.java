@@ -4,6 +4,7 @@ import com.story.game.dto.*;
 import com.story.game.entity.StoryData;
 import com.story.game.service.GameService;
 import com.story.game.service.StoryGenerationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ import java.util.Map;
 @RequestMapping("/api/game")
 @RequiredArgsConstructor
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
+@Tag(name = "Game", description = "게임 플레이 및 스토리 관리 API")
 public class GameController {
 
     private final GameService gameService;
