@@ -6,12 +6,16 @@ import com.story.game.service.GameService;
 import com.story.game.service.StoryGenerationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/game")
 @RequiredArgsConstructor
@@ -25,8 +29,14 @@ public class GameController {
      * Start a new game session
      */
     @PostMapping("/start")
-    public ResponseEntity<GameStateResponseDto> startGame(@RequestBody StartGameRequestDto request) {
+    public ResponseEntity<GameStateResponseDto> startGame(
+            @RequestBody StartGameRequestDto request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Start Game Request ===");
+        log.info("StoryDataId: {}", request.getStoryDataId());
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
         GameStateResponseDto response = gameService.startGame(request.getStoryDataId());
+        log.info("Game started. SessionId: {}", response.getSessionId());
         return ResponseEntity.ok(response);
     }
 
@@ -34,7 +44,12 @@ public class GameController {
      * Get current game state
      */
     @GetMapping("/{sessionId}")
-    public ResponseEntity<GameStateResponseDto> getGameState(@PathVariable String sessionId) {
+    public ResponseEntity<GameStateResponseDto> getGameState(
+            @PathVariable String sessionId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Get Game State Request ===");
+        log.info("SessionId: {}", sessionId);
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
         GameStateResponseDto response = gameService.getGameState(sessionId);
         return ResponseEntity.ok(response);
     }
@@ -45,7 +60,12 @@ public class GameController {
     @PostMapping("/{sessionId}/choice")
     public ResponseEntity<GameStateResponseDto> makeChoice(
             @PathVariable String sessionId,
-            @RequestBody ChoiceRequestDto request) {
+            @RequestBody ChoiceRequestDto request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Make Choice Request ===");
+        log.info("SessionId: {}", sessionId);
+        log.info("ChoiceIndex: {}", request.getChoiceIndex());
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
         GameStateResponseDto response = gameService.makeChoice(sessionId, request.getChoiceIndex());
         return ResponseEntity.ok(response);
     }

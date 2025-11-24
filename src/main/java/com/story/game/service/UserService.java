@@ -63,7 +63,7 @@ public class UserService {
                 .map(session -> {
                     StoryData storyData = storyDataRepository.findById(session.getStoryDataId())
                             .orElse(null);
-                    String storyTitle = storyData != null ? storyData.getStoryTitle() : "Unknown";
+                    String storyTitle = storyData != null ? storyData.getTitle() : "Unknown";
                     return GameHistoryDto.from(session, storyTitle);
                 })
                 .collect(Collectors.toList());

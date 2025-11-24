@@ -1,5 +1,6 @@
 package com.story.game.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,6 +44,23 @@ public class SecurityConfig {
                         ).permitAll()
                         // 그 외 모든 요청은 인증 필요
                         .anyRequest().authenticated()
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            System.out.println("=== Authentication Failed ===");
+                            System.out.println("Request: " + request.getMethod() + " " + request.getRequestURI());
+                            System.out.println("Reason: " + authException.getMessage());
+                            System.out.println("==============================");
+                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            System.out.println("=== Access Denied (403) ===");
+                            System.out.println("Request: " + request.getMethod() + " " + request.getRequestURI());
+                            System.out.println("Reason: " + accessDeniedException.getMessage());
+                            System.out.println("User: " + request.getUserPrincipal());
+                            System.out.println("===========================");
+                            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access Denied");
+                        })
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
