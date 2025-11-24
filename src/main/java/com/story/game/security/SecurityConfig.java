@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -32,17 +33,26 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // 인증 없이 접근 가능한 엔드포인트
-                        .requestMatchers(
-                                "/api/auth/**",
-                                "/api/game/stories",
-                                "/api/game/ai/health",
-                                "/swagger-ui/**",
-                                "/v3/api-docs/**",
-                                "/swagger-resources/**",
-                                "/webjars/**"
-                        ).permitAll()
-                        // 그 외 모든 요청은 인증 필요
+                        // 인증 관련 - 모두 허용
+                        .requestMatchers("/api/auth/**").permitAll()
+
+                        // 게임 스토리 조회 - 로그인 없이 가능
+                        .requestMatchers(HttpMethod.GET, "/api/game/stories/**").permitAll()
+                        .requestMatchers("/api/game/ai/health").permitAll()
+                        .requestMatchers("/api/game/stories/analyze").permitAll()
+
+                        // 커뮤니티 조회 (GET) - 로그인 없이 가능
+                        .requestMatchers(HttpMethod.GET, "/api/posts/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/comments/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/reviews/**").permitAll()
+
+                        // 댓글 작성/수정/삭제/좋아요 - 로그인 필요 (이미 anyRequest().authenticated()로 처리됨)
+
+                        // Swagger
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**",
+                                       "/swagger-resources/**", "/webjars/**").permitAll()
+
+                        // 그 외 모든 요청은 인증 필요 (작성, 수정, 삭제 등)
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

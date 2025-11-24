@@ -92,6 +92,22 @@ public class GameController {
     }
 
     /**
+     * Analyze novel text to extract summary, characters, and gauges
+     */
+    @PostMapping("/stories/analyze")
+    public ResponseEntity<NovelAnalysisResponseDto> analyzeNovel(@RequestBody Map<String, String> request) {
+        log.info("=== Analyze Novel Request ===");
+        String novelText = request.get("novelText");
+        if (novelText == null || novelText.isBlank()) {
+            throw new IllegalArgumentException("Novel text is required");
+        }
+        NovelAnalysisResponseDto response = storyGenerationService.analyzeNovel(novelText);
+        log.info("Analysis completed: {} characters, {} gauges",
+                response.getCharacters().size(), response.getGauges().size());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Generate a new story using Python AI server
      */
     @PostMapping("/stories/generate")

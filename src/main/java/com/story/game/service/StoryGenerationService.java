@@ -23,27 +23,67 @@ public class StoryGenerationService {
     private final StoryDataRepository storyDataRepository;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Analyze novel text to extract summary, characters, and gauges
+     */
+    public NovelAnalysisResponseDto analyzeNovel(String novelText) {
+        log.info("=== Analyze Novel Request ===");
+        log.info("Novel text length: {} characters", novelText.length());
+
+        NovelAnalysisRequestDto request = NovelAnalysisRequestDto.builder()
+                .novelText(novelText)
+                .build();
+
+        NovelAnalysisResponseDto response = aiServerWebClient.post()
+                .uri("/analyze")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(NovelAnalysisResponseDto.class)
+                .timeout(Duration.ofMinutes(3))
+                .onErrorResume(WebClientResponseException.class, e -> {
+                    log.error("AI server error during analysis: {} - {}",
+                            e.getStatusCode(), e.getResponseBodyAsString());
+                    return Mono.error(new RuntimeException("AI analysis failed: " + e.getMessage()));
+                })
+                .block();
+
+        if (response == null) {
+            throw new RuntimeException("No response from AI server during analysis");
+        }
+
+        log.info("Novel analysis completed: {} characters, {} gauges extracted",
+                response.getCharacters().size(), response.getGauges().size());
+
+        return response;
+    }
+
     @Transactional
     public StoryData generateStory(GenerateStoryRequestDto request) {
-        log.info("Requesting story generation from AI server: title={}, episodes={}, depth={}",
-                request.getTitle(), request.getNumEpisodes(), request.getMaxDepth());
+        log.info("=== Generate Story Request ===");
+        log.info("Title: {}, Episodes: {}, Depth: {}, Gauges: {}",
+                request.getTitle(), request.getNumEpisodes(),
+                request.getMaxDepth(), request.getSelectedGaugeIds());
 
         // Build request for Python AI server
         StoryGenerationRequestDto aiRequest = StoryGenerationRequestDto.builder()
                 .novelText(request.getNovelText())
+                .selectedGaugeIds(request.getSelectedGaugeIds())
                 .numEpisodes(request.getNumEpisodes())
                 .maxDepth(request.getMaxDepth())
+                .endingConfig(request.getEndingConfig())
+                .numEpisodeEndings(request.getNumEpisodeEndings())
                 .build();
 
         // Call AI server
         StoryGenerationResponseDto response = aiServerWebClient.post()
-                .uri("/api/v1/stories/generate")
+                .uri("/generate")
                 .bodyValue(aiRequest)
                 .retrieve()
                 .bodyToMono(StoryGenerationResponseDto.class)
-                .timeout(Duration.ofMinutes(5))  // Story generation can take time
+                .timeout(Duration.ofMinutes(10))  // Story generation can take time
                 .onErrorResume(WebClientResponseException.class, e -> {
-                    log.error("AI server error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+                    log.error("AI server error during generation: {} - {}",
+                            e.getStatusCode(), e.getResponseBodyAsString());
                     return Mono.error(new RuntimeException("AI server error: " + e.getMessage()));
                 })
                 .block();
