@@ -27,6 +27,9 @@ public class StoryCreation {
     @Column(columnDefinition = "LONGTEXT")
     private String novelText;
 
+    @Column(name = "s3_file_key", length = 500)
+    private String s3FileKey;  // S3에 저장된 파일의 키 (선택사항)
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default

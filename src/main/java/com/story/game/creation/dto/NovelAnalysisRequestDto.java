@@ -13,7 +13,18 @@ import lombok.NoArgsConstructor;
 @Builder
 public class NovelAnalysisRequestDto {
 
-    @NotBlank(message = "Novel text is required")
     @JsonProperty("novel_text")
     private String novelText;
+
+    @JsonProperty("file_key")
+    private String fileKey;
+
+    @JsonProperty("bucket")
+    @Builder.Default
+    private String bucket = "story-game-bucket";
+
+    // S3 방식인지 확인
+    public boolean isS3Mode() {
+        return fileKey != null && !fileKey.isBlank();
+    }
 }

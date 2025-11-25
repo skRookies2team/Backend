@@ -338,19 +338,32 @@ public class StoryManagementService {
                     new TypeReference<Map<String, Integer>>() {}
             );
 
-            StoryGenerationRequestDto request = StoryGenerationRequestDto.builder()
-                    .novelText(storyCreation.getNovelText())
+            // S3 파일인 경우와 일반 텍스트인 경우 구분
+            StoryGenerationRequestDto.StoryGenerationRequestDtoBuilder requestBuilder = StoryGenerationRequestDto.builder()
                     .selectedGaugeIds(selectedGaugeIds)
                     .numEpisodes(storyCreation.getNumEpisodes())
                     .maxDepth(storyCreation.getMaxDepth())
                     .endingConfig(endingConfig)
-                    .numEpisodeEndings(storyCreation.getNumEpisodeEndings())
-                    .build();
+                    .numEpisodeEndings(storyCreation.getNumEpisodeEndings());
 
-            log.info("Calling AI server for story generation...");
+            String aiEndpoint;
+            if (storyCreation.getS3FileKey() != null && !storyCreation.getS3FileKey().isEmpty()) {
+                // S3 파일 사용
+                requestBuilder.fileKey(storyCreation.getS3FileKey())
+                             .bucket("story-game-bucket");
+                aiEndpoint = "/generate-from-s3";
+                log.info("Calling AI server for story generation from S3: {}", storyCreation.getS3FileKey());
+            } else {
+                // 일반 텍스트 사용
+                requestBuilder.novelText(storyCreation.getNovelText());
+                aiEndpoint = "/generate";
+                log.info("Calling AI server for story generation with direct text");
+            }
+
+            StoryGenerationRequestDto request = requestBuilder.build();
 
             StoryGenerationResponseDto response = aiServerWebClient.post()
-                    .uri("/generate")
+                    .uri(aiEndpoint)
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(StoryGenerationResponseDto.class)
@@ -515,21 +528,92 @@ public class StoryManagementService {
 
     /**
      * 11. S3에서 소설 읽어서 업로드 (S3 Pre-signed URL 방식)
+     * AI 서버가 S3에서 직접 다운로드하도록 fileKey만 전달
      */
     @Transactional
     public StoryUploadResponseDto uploadNovelFromS3(S3UploadRequestDto request) {
         log.info("=== Upload Novel From S3 ===");
         log.info("Title: {}, FileKey: {}", request.getTitle(), request.getFileKey());
 
-        // S3에서 파일 읽기
-        String novelText = s3Service.downloadFileContent(request.getFileKey());
+        // 고유 ID 생성
+        String storyId = "story_" + UUID.randomUUID().toString().substring(0, 8);
 
-        // 기존 업로드 로직 재사용
-        StoryUploadRequestDto uploadRequest = StoryUploadRequestDto.builder()
+        // StoryCreation 엔티티 생성
+        StoryCreation storyCreation = StoryCreation.builder()
+                .id(storyId)
                 .title(request.getTitle())
-                .novelText(novelText)
+                .novelText("") // S3 fileKey로 대체, 텍스트는 저장하지 않음
+                .s3FileKey(request.getFileKey()) // fileKey 저장
+                .status(StoryCreation.CreationStatus.ANALYZING)
+                .currentPhase("ANALYZING")
+                .progressPercentage(0)
+                .progressMessage("Starting novel analysis from S3...")
                 .build();
 
-        return uploadNovel(uploadRequest);
+        storyCreation = storyCreationRepository.save(storyCreation);
+
+        // AI 서버에 fileKey만 전달하여 비동기 분석 시작
+        startAnalysisFromS3Async(storyId, request.getFileKey());
+
+        return StoryUploadResponseDto.builder()
+                .storyId(storyCreation.getId())
+                .title(storyCreation.getTitle())
+                .status(storyCreation.getStatus())
+                .createdAt(storyCreation.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * S3 파일로 AI 분석 시작 (fileKey만 전달)
+     */
+    @Transactional
+    public void startAnalysisFromS3Async(String storyId, String fileKey) {
+        try {
+            log.info("Starting AI analysis from S3 for story: {}, fileKey: {}", storyId, fileKey);
+
+            // AI 서버에 fileKey만 전달 (AI 서버가 S3에서 직접 다운로드)
+            NovelAnalysisRequestDto aiRequest = NovelAnalysisRequestDto.builder()
+                    .fileKey(fileKey)
+                    .bucket("story-game-bucket")
+                    .build();
+
+            NovelAnalysisResponseDto response = aiServerWebClient.post()
+                    .uri("/analyze-from-s3")  // S3 전용 엔드포인트
+                    .bodyValue(aiRequest)
+                    .retrieve()
+                    .bodyToMono(NovelAnalysisResponseDto.class)
+                    .block();
+
+            if (response == null) {
+                throw new RuntimeException("No response from AI server");
+            }
+
+            // 결과 저장
+            StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                    .orElseThrow(() -> new RuntimeException("Story not found"));
+
+            storyCreation.setSummary(response.getSummary());
+            storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
+            storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
+            storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
+            storyCreation.setCurrentPhase("GAUGES_READY");
+            storyCreation.setProgressPercentage(30);
+            storyCreation.setProgressMessage("Analysis completed. Ready for gauge selection.");
+
+            storyCreationRepository.save(storyCreation);
+
+            log.info("AI analysis from S3 completed for story: {}", storyId);
+
+        } catch (Exception e) {
+            log.error("Failed to analyze novel from S3", e);
+
+            StoryCreation storyCreation = storyCreationRepository.findById(storyId).orElse(null);
+            if (storyCreation != null) {
+                storyCreation.setStatus(StoryCreation.CreationStatus.FAILED);
+                storyCreation.setCurrentPhase("FAILED");
+                storyCreation.setProgressMessage("Analysis failed: " + e.getMessage());
+                storyCreationRepository.save(storyCreation);
+            }
+        }
     }
 }
