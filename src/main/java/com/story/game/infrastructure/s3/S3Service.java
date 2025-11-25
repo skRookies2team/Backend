@@ -94,7 +94,7 @@ public class S3Service {
     }
 
     /**
-     * S3에 파일 업로드 (서버에서 직접)
+     * S3에 파일 업로드 (서버에서 직접 - 텍스트)
      */
     public String uploadFile(String fileName, String content) {
         try {
@@ -115,6 +115,28 @@ public class S3Service {
         } catch (Exception e) {
             log.error("Failed to upload file to S3", e);
             throw new RuntimeException("Failed to upload file to S3: " + e.getMessage());
+        }
+    }
+
+    /**
+     * S3에 바이너리 파일 업로드 (이미지 등)
+     */
+    public String uploadBinaryFile(String fileKey, byte[] content, String contentType) {
+        try {
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(content);
+
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(content.length);
+            metadata.setContentType(contentType);
+
+            amazonS3.putObject(bucketName, fileKey, inputStream, metadata);
+
+            log.info("Binary file uploaded to S3: {} ({} bytes, type: {})", fileKey, content.length, contentType);
+
+            return fileKey;
+        } catch (Exception e) {
+            log.error("Failed to upload binary file to S3: {}", fileKey, e);
+            throw new RuntimeException("Failed to upload binary file to S3: " + e.getMessage());
         }
     }
 

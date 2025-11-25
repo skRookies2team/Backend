@@ -1,20 +1,28 @@
 package com.story.game.community.service;
 
 import com.story.game.community.dto.CreatePostRequestDto;
+import com.story.game.community.dto.PostMediaUploadResponseDto;
 import com.story.game.community.dto.PostResponseDto;
 import com.story.game.community.entity.Bookmark;
 import com.story.game.community.entity.Like;
 import com.story.game.community.entity.Post;
+import com.story.game.community.entity.PostMedia;
 import com.story.game.auth.entity.User;
 import com.story.game.community.repository.BookmarkRepository;
 import com.story.game.community.repository.LikeRepository;
+import com.story.game.community.repository.PostMediaRepository;
 import com.story.game.community.repository.PostRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.infrastructure.s3.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +32,8 @@ public class PostService {
     private final UserRepository userRepository;
     private final LikeRepository likeRepository;
     private final BookmarkRepository bookmarkRepository;
+    private final PostMediaRepository postMediaRepository;
+    private final S3Service s3Service;
 
     @Transactional
     public PostResponseDto createPost(String username, CreatePostRequestDto request) {
@@ -137,6 +147,106 @@ public class PostService {
                     .targetId(postId)
                     .build();
             bookmarkRepository.save(bookmark);
+        }
+    }
+
+    @Transactional
+    public PostMediaUploadResponseDto uploadPostMedia(String username, Long postId, MultipartFile mediaFile) {
+        User user = getUserByUsername(username);
+        Post post = getPostById(postId);
+
+        // 작성자 확인
+        validateAuthor(post, username);
+
+        // 파일 검증
+        if (mediaFile.isEmpty()) {
+            throw new IllegalArgumentException("Media file is required");
+        }
+
+        String contentType = mediaFile.getContentType();
+        if (contentType == null) {
+            throw new IllegalArgumentException("Content type is required");
+        }
+
+        // 미디어 타입 결정
+        PostMedia.MediaType mediaType;
+        long maxSize;
+        int maxCount;
+        String folder;
+
+        if (contentType.startsWith("image/")) {
+            mediaType = PostMedia.MediaType.IMAGE;
+            maxSize = 10 * 1024 * 1024; // 10MB
+            maxCount = 10; // 이미지 최대 10개
+            folder = "post-images";
+        } else if (contentType.startsWith("video/")) {
+            mediaType = PostMedia.MediaType.VIDEO;
+            maxSize = 100 * 1024 * 1024; // 100MB
+            maxCount = 3; // 동영상 최대 3개
+            folder = "post-videos";
+        } else {
+            throw new IllegalArgumentException("Only image and video files are allowed");
+        }
+
+        // 미디어 타입별 개수 제한 확인
+        Long currentCount = postMediaRepository.countByPostAndMediaType(post, mediaType);
+        if (currentCount >= maxCount) {
+            String mediaTypeName = mediaType == PostMedia.MediaType.IMAGE ? "images" : "videos";
+            throw new IllegalArgumentException("Maximum " + maxCount + " " + mediaTypeName + " allowed per post");
+        }
+
+        // 파일 크기 검증
+        if (mediaFile.getSize() > maxSize) {
+            long maxSizeMB = maxSize / (1024 * 1024);
+            throw new IllegalArgumentException("File size must be less than " + maxSizeMB + "MB");
+        }
+
+        try {
+            // 원본 파일명에서 확장자 추출
+            String originalFilename = mediaFile.getOriginalFilename();
+            String extension = "";
+            if (originalFilename != null && originalFilename.contains(".")) {
+                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+            }
+
+            // 고유한 파일명 생성 (post-images/{postId}/{uuid}.{extension} 또는 post-videos/{postId}/{uuid}.{extension})
+            String fileName = folder + "/" + postId + "/" + UUID.randomUUID() + extension;
+
+            // S3에 업로드
+            byte[] fileBytes = mediaFile.getBytes();
+            String fileKey = s3Service.uploadBinaryFile(fileName, fileBytes, contentType);
+
+            // S3 다운로드 URL 생성
+            String mediaUrl = s3Service.generatePresignedDownloadUrl(fileKey);
+
+            // 현재 게시물의 미디어 개수 확인 (순서 결정)
+            Long mediaCount = postMediaRepository.countByPost(post);
+
+            // PostMedia 엔티티 생성 및 저장
+            PostMedia postMedia = PostMedia.builder()
+                    .post(post)
+                    .mediaType(mediaType)
+                    .mediaUrl(mediaUrl)
+                    .mediaKey(fileKey)
+                    .mediaOrder(mediaCount.intValue())
+                    .fileSize(mediaFile.getSize())
+                    .contentType(contentType)
+                    .build();
+
+            postMediaRepository.save(postMedia);
+
+            return PostMediaUploadResponseDto.builder()
+                    .mediaId(postMedia.getId())
+                    .mediaType(postMedia.getMediaType().name())
+                    .mediaUrl(mediaUrl)
+                    .mediaKey(fileKey)
+                    .mediaOrder(postMedia.getMediaOrder())
+                    .fileSize(postMedia.getFileSize())
+                    .message("Post media uploaded successfully")
+                    .build();
+
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to upload post media: " + e.getMessage());
         }
     }
 

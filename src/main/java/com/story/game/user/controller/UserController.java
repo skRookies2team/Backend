@@ -2,6 +2,7 @@ package com.story.game.user.controller;
 
 import com.story.game.achievement.dto.AchievementDto;
 import com.story.game.user.dto.GameHistoryDto;
+import com.story.game.user.dto.ProfileImageUploadResponseDto;
 import com.story.game.user.dto.UpdateProfileRequestDto;
 import com.story.game.user.dto.UserProfileDto;
 import com.story.game.user.service.UserService;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -36,6 +38,14 @@ public class UserController {
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody UpdateProfileRequestDto request) {
         return ResponseEntity.ok(userService.updateProfile(userDetails.getUsername(), request));
+    }
+
+    @PostMapping("/me/profile-image")
+    @Operation(summary = "프로필 이미지 업로드", description = "프로필 이미지를 S3에 업로드하고 URL을 반환합니다")
+    public ResponseEntity<ProfileImageUploadResponseDto> uploadProfileImage(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("profileImage") MultipartFile imageFile) {
+        return ResponseEntity.ok(userService.uploadProfileImage(userDetails.getUsername(), imageFile));
     }
 
     @GetMapping("/me/history")

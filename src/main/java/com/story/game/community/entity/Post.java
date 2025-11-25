@@ -58,6 +58,10 @@ public class Post {
     @Builder.Default
     private List<Comment> comments = new ArrayList<>();
 
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<PostMedia> mediaFiles = new ArrayList<>();
+
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();

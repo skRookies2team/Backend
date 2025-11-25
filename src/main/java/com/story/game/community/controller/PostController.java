@@ -1,6 +1,7 @@
 package com.story.game.community.controller;
 
 import com.story.game.community.dto.CreatePostRequestDto;
+import com.story.game.community.dto.PostMediaUploadResponseDto;
 import com.story.game.community.dto.PostResponseDto;
 import com.story.game.community.entity.Post;
 import com.story.game.community.service.PostService;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/posts")
@@ -101,5 +103,14 @@ public class PostController {
             @PathVariable Long postId) {
         postService.toggleBookmark(userDetails.getUsername(), postId);
         return ResponseEntity.ok("Bookmark toggled successfully");
+    }
+
+    @PostMapping("/{postId}/media")
+    @Operation(summary = "게시글 미디어 업로드", description = "게시글에 이미지 또는 동영상을 업로드합니다 (이미지: 10MB, 동영상: 100MB)")
+    public ResponseEntity<PostMediaUploadResponseDto> uploadPostMedia(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long postId,
+            @RequestParam("media") MultipartFile mediaFile) {
+        return ResponseEntity.ok(postService.uploadPostMedia(userDetails.getUsername(), postId, mediaFile));
     }
 }
