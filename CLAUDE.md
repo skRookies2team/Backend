@@ -78,7 +78,8 @@ com.story.game/
 세분화된 스토리 생성 프로세스 - 자세한 문서: `STORY_GENERATION_API.md`
 
 ```
-POST /api/stories/upload                  - 소설 업로드 및 분석 시작
+POST /api/stories/upload                  - 소설 직접 업로드 및 분석 시작
+POST /api/stories/upload-from-s3          - S3에서 소설 읽어서 분석 시작 🆕
 GET  /api/stories/{id}/summary            - 요약 조회
 GET  /api/stories/{id}/characters         - 캐릭터 조회
 GET  /api/stories/{id}/gauges             - 게이지 5개 제안 조회
@@ -86,7 +87,16 @@ POST /api/stories/{id}/gauges/select      - 게이지 2개 선택
 POST /api/stories/{id}/config             - 생성 설정 (에피소드 수, depth, 엔딩 타입)
 POST /api/stories/{id}/generate           - 스토리 생성 시작
 GET  /api/stories/{id}/progress           - 생성 진행률 조회 (폴링용)
-GET  /api/stories/{id}/result             - 생성 완료 결과 조회
+GET  /api/stories/{id}/result             - 생성 완료 결과 조회 (preview)
+GET  /api/stories/{id}/data               - 전체 스토리 데이터 조회 (게임 구성용)
+```
+
+### File Upload API (UploadController) 🆕
+S3를 이용한 파일 업로드 API
+
+```
+GET  /api/upload/presigned-url            - Pre-signed URL 생성 (업로드용)
+GET  /api/upload/download-url             - Pre-signed URL 생성 (다운로드용)
 ```
 
 ### Game Play API (GameController)
@@ -97,6 +107,7 @@ POST /api/game/start                      - 게임 시작 (body: {storyDataId})
 GET  /api/game/{sessionId}                - 현재 상태 조회
 POST /api/game/{sessionId}/choice         - 선택하기 (body: {choiceIndex})
 GET  /api/game/stories                    - 스토리 목록 조회
+GET  /api/game/stories/{id}/data          - 전체 스토리 데이터 조회 (storyDataId로) 🆕
 POST /api/game/stories                    - 스토리 JSON 업로드 (레거시)
 POST /api/game/stories/analyze            - 소설 분석 (레거시)
 POST /api/game/stories/generate           - 스토리 생성 (레거시)
@@ -109,6 +120,12 @@ Database connection in `src/main/resources/application.yml`:
 - Default DB: `story_game` on localhost:3306
 - Set `DB_PASSWORD` env variable or update password in yml
 - Set `AI_SERVER_URL` env variable (default: http://localhost:8000)
+
+AWS S3 configuration (for file upload):
+- Set `AWS_S3_BUCKET` env variable (your S3 bucket name)
+- Set `AWS_S3_REGION` env variable (default: ap-northeast-2)
+- Set `AWS_ACCESS_KEY` env variable (AWS access key)
+- Set `AWS_SECRET_KEY` env variable (AWS secret key)
 
 ## Python AI Integration
 

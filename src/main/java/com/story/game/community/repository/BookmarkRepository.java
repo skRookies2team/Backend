@@ -1,0 +1,17 @@
+package com.story.game.community.repository;
+
+import com.story.game.community.entity.Bookmark;
+import com.story.game.auth.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
+    Optional<Bookmark> findByUserAndTargetTypeAndTargetId(User user, Bookmark.TargetType targetType, Long targetId);
+    boolean existsByUserAndTargetTypeAndTargetId(User user, Bookmark.TargetType targetType, Long targetId);
+    void deleteByUserAndTargetTypeAndTargetId(User user, Bookmark.TargetType targetType, Long targetId);
+    List<Bookmark> findByUserAndTargetType(User user, Bookmark.TargetType targetType);
+}

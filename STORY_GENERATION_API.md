@@ -12,6 +12,8 @@
 
 ## 전체 플로우
 
+### 방법 1: 직접 업로드 (작은 텍스트용)
+
 ```
 1. 소설 업로드 및 분석 시작
    POST /api/stories/upload
@@ -39,6 +41,49 @@
 
 9. 생성 완료 결과 조회
    GET /api/stories/{id}/result
+
+10. 전체 스토리 데이터 조회
+    GET /api/stories/{id}/data
+```
+
+### 방법 2: S3 업로드 (큰 파일용) 🆕
+
+```
+1. Pre-signed URL 요청
+   GET /api/upload/presigned-url?fileName=novel.txt
+
+2. S3에 파일 직접 업로드
+   PUT {uploadUrl} (프론트엔드에서 직접)
+
+3. S3에서 소설 읽어서 분석 시작
+   POST /api/stories/upload-from-s3
+
+4. 요약 조회
+   GET /api/stories/{id}/summary
+
+5. 캐릭터 조회
+   GET /api/stories/{id}/characters
+
+6. 게이지 제안 조회
+   GET /api/stories/{id}/gauges
+
+7. 게이지 선택
+   POST /api/stories/{id}/gauges/select
+
+8. 생성 설정
+   POST /api/stories/{id}/config
+
+9. 스토리 생성 시작
+   POST /api/stories/{id}/generate
+
+10. 생성 진행률 조회 (폴링)
+    GET /api/stories/{id}/progress
+
+11. 생성 완료 결과 조회
+    GET /api/stories/{id}/result
+
+12. 전체 스토리 데이터 조회
+    GET /api/stories/{id}/data
 ```
 
 ---
@@ -443,7 +488,112 @@ GET /api/stories/{storyId}/result
 **설명**
 - 생성 완료된 스토리의 정보를 조회합니다
 - **storyDataId**: 게임 플레이 시 사용할 스토리 ID
-- 이제 이 ID로 게임을 시작할 수 있습니다: `POST /api/game/start { storyDataId: 456 }`
+- preview만 포함 (전체 데이터는 `/data` 엔드포인트 사용)
+
+---
+
+### 10. 전체 스토리 데이터 조회 🆕
+
+**요청**
+```http
+GET /api/stories/{storyId}/data
+```
+
+**응답**
+```json
+{
+  "metadata": {
+    "totalEpisodes": 3,
+    "totalNodes": 40,
+    "totalGauges": 2,
+    "totalCharacters": 4
+  },
+  "context": {
+    "summary": "무인도에 고립된 소년들이...",
+    "characters": [
+      {
+        "name": "랄프",
+        "description": "민주적 리더",
+        "relationships": ["잭과 대립"]
+      }
+    ],
+    "selectedGauges": [
+      {
+        "id": "civilization",
+        "name": "문명",
+        "minLabel": "야만",
+        "maxLabel": "문명"
+      }
+    ],
+    "finalEndings": [
+      {
+        "id": "ending_happy_1",
+        "type": "happy",
+        "title": "구조와 귀환",
+        "condition": "civilization >= 70 AND unity >= 60",
+        "narrative": "소년들은 질서를 유지하며..."
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "id": "ep1",
+      "order": 1,
+      "title": "첫 날 밤",
+      "introText": "비행기 추락 후...",
+      "nodes": [
+        {
+          "id": "ep1_node_0",
+          "depth": 0,
+          "text": "랄프가 제안한다...",
+          "choices": [
+            {
+              "text": "랄프를 지지한다",
+              "tags": ["cooperative", "rational"]
+            }
+          ]
+        }
+      ],
+      "endings": [
+        {
+          "id": "ep1_ending_1",
+          "title": "성공적인 첫 날",
+          "condition": "cooperative >= 2",
+          "narrative": "신호불이 올라간다...",
+          "gaugeChanges": {
+            "civilization": 15,
+            "unity": 10
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**설명**
+- **생성 완료된 전체 스토리 JSON을 반환합니다**
+- 프론트엔드에서 게임을 구성하는 데 사용됩니다
+- 모든 에피소드, 노드, 선택지, 엔딩 정보 포함
+- **크기가 클 수 있으니 주의** (수백 KB ~ MB)
+
+**프론트엔드 사용 예:**
+```typescript
+// 1. 생성 완료 확인
+const result = await GET(`/api/stories/${storyId}/result`);
+
+// 2. 전체 데이터 로드 (게임 구성)
+const fullStory = await GET(`/api/stories/${storyId}/data`);
+
+// 3. GameStateManager 초기화
+gameState.loadStory(fullStory);
+```
+
+**대안 엔드포인트:**
+```
+GET /api/game/stories/{storyDataId}/data
+→ storyDataId로 직접 조회 가능
+```
 
 ---
 
@@ -773,6 +923,209 @@ curl -X POST http://localhost:8080/api/game/start \
     "retryable": true
   }
 }
+```
+
+---
+
+## S3 파일 업로드 가이드 🆕
+
+### 언제 S3를 사용하나요?
+
+| 방법 | 사용 시기 | 장점 | 단점 |
+|------|----------|------|------|
+| **직접 업로드** | 작은 텍스트 (< 1MB) | 간단, 빠름 | 서버 부하 |
+| **S3 업로드** | 큰 파일 (> 1MB) | 서버 부하 ↓, 진행률 표시 | 복잡, AWS 필요 |
+
+### S3 업로드 사용법
+
+#### 1. Pre-signed URL 요청
+
+```http
+GET /api/upload/presigned-url?fileName=my-novel.txt
+```
+
+**응답:**
+```json
+{
+  "uploadUrl": "https://story-game-bucket.s3.ap-northeast-2.amazonaws.com/uploads/abc123_my-novel.txt?...",
+  "fileKey": "uploads/abc123_my-novel.txt",
+  "expiresIn": 900,
+  "method": "PUT"
+}
+```
+
+#### 2. S3에 파일 직접 업로드 (프론트엔드)
+
+```javascript
+// JavaScript/TypeScript 예시
+const file = document.getElementById('fileInput').files[0];
+
+// Pre-signed URL 요청
+const { uploadUrl, fileKey } = await fetch(
+  `/api/upload/presigned-url?fileName=${encodeURIComponent(file.name)}`
+).then(r => r.json());
+
+// S3에 직접 업로드
+await fetch(uploadUrl, {
+  method: 'PUT',
+  body: file,
+  headers: {
+    'Content-Type': 'text/plain'
+  }
+});
+
+console.log('Upload complete! FileKey:', fileKey);
+```
+
+**업로드 진행률 표시:**
+```javascript
+const xhr = new XMLHttpRequest();
+
+xhr.upload.addEventListener('progress', (e) => {
+  if (e.lengthComputable) {
+    const percentComplete = (e.loaded / e.total) * 100;
+    console.log(`Upload: ${percentComplete}%`);
+  }
+});
+
+xhr.open('PUT', uploadUrl);
+xhr.setRequestHeader('Content-Type', 'text/plain');
+xhr.send(file);
+```
+
+#### 3. 업로드 완료 후 분석 시작
+
+```http
+POST /api/stories/upload-from-s3
+Content-Type: application/json
+
+{
+  "title": "파리대왕",
+  "description": "무인도 생존 이야기",
+  "fileKey": "uploads/abc123_my-novel.txt"
+}
+```
+
+**응답:**
+```json
+{
+  "storyId": "story_456",
+  "title": "파리대왕",
+  "status": "ANALYZING",
+  "createdAt": "2025-11-24T15:00:00"
+}
+```
+
+### React/SvelteKit 예시
+
+**React:**
+```tsx
+import { useState } from 'react';
+
+function NovelUpload() {
+  const [progress, setProgress] = useState(0);
+
+  const handleUpload = async (file: File) => {
+    // 1. Pre-signed URL 요청
+    const { uploadUrl, fileKey } = await fetch(
+      `/api/upload/presigned-url?fileName=${file.name}`
+    ).then(r => r.json());
+
+    // 2. S3 업로드 (진행률 추적)
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.onprogress = (e) => {
+      setProgress((e.loaded / e.total) * 100);
+    };
+
+    await new Promise((resolve, reject) => {
+      xhr.onload = resolve;
+      xhr.onerror = reject;
+      xhr.open('PUT', uploadUrl);
+      xhr.send(file);
+    });
+
+    // 3. 분석 시작
+    const response = await fetch('/api/stories/upload-from-s3', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: '내 소설',
+        fileKey
+      })
+    }).then(r => r.json());
+
+    console.log('Story created:', response.storyId);
+  };
+
+  return (
+    <div>
+      <input type="file" onChange={(e) => handleUpload(e.target.files[0])} />
+      <progress value={progress} max={100} />
+    </div>
+  );
+}
+```
+
+**SvelteKit:**
+```svelte
+<script lang="ts">
+  let progress = 0;
+
+  async function handleUpload(file: File) {
+    // 1. Pre-signed URL 요청
+    const { uploadUrl, fileKey } = await fetch(
+      `/api/upload/presigned-url?fileName=${file.name}`
+    ).then(r => r.json());
+
+    // 2. S3 업로드
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (e) => {
+      progress = (e.loaded / e.total) * 100;
+    };
+
+    await new Promise((resolve, reject) => {
+      xhr.onload = resolve;
+      xhr.onerror = reject;
+      xhr.open('PUT', uploadUrl);
+      xhr.send(file);
+    });
+
+    // 3. 분석 시작
+    const response = await fetch('/api/stories/upload-from-s3', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '내 소설', fileKey })
+    }).then(r => r.json());
+
+    console.log('Story created:', response.storyId);
+  }
+</script>
+
+<input type="file" on:change={(e) => handleUpload(e.target.files[0])} />
+<progress value={progress} max={100}></progress>
+```
+
+### AWS 설정
+
+**환경 변수 설정:**
+```bash
+export AWS_S3_BUCKET=story-game-bucket
+export AWS_S3_REGION=ap-northeast-2
+export AWS_ACCESS_KEY=your-access-key
+export AWS_SECRET_KEY=your-secret-key
+```
+
+**S3 버킷 CORS 설정:**
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedOrigins": ["http://localhost:3000", "http://localhost:5173"],
+    "ExposeHeaders": []
+  }
+]
 ```
 
 ---

@@ -38,6 +38,15 @@ jwt:
   access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:3600000}  # 1 hour in milliseconds
   refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:604800000}  # 7 days in milliseconds
 
+# AWS S3 configuration
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET:story-game-bucket}
+    region: ${AWS_S3_REGION:ap-northeast-2}
+  credentials:
+    access-key: ${AWS_ACCESS_KEY:your-access-key}
+    secret-key: ${AWS_SECRET_KEY:your-secret-key}
+
 # Logging
 logging:
   level:
