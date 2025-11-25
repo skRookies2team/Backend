@@ -23,6 +23,9 @@ public class StoryGenerationRequestDto {
     @Builder.Default
     private String bucket = "story-game-bucket";
 
+    @JsonProperty("s3_upload_url")
+    private String s3UploadUrl;
+
     @NotNull(message = "Selected gauge IDs are required")
     @Size(min = 2, message = "At least 2 gauges must be selected")
     @JsonProperty("selected_gauge_ids")

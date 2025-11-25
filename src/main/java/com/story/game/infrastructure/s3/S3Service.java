@@ -30,9 +30,7 @@ public class S3Service {
     /**
      * Pre-signed URL 생성 (업로드용)
      */
-    public PresignedUrlInfo generatePresignedUploadUrl(String fileName) {
-        String fileKey = generateFileKey(fileName);
-
+    public PresignedUrlInfo generatePresignedUploadUrl(String fileKey) {
         Date expiration = new Date();
         long expTimeMillis = expiration.getTime();
         expTimeMillis += 1000 * 60 * 15; // 15분 유효
@@ -96,10 +94,8 @@ public class S3Service {
     /**
      * S3에 파일 업로드 (서버에서 직접 - 텍스트)
      */
-    public String uploadFile(String fileName, String content) {
+    public String uploadFile(String fileKey, String content) {
         try {
-            String fileKey = generateFileKey(fileName);
-
             byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
             ByteArrayInputStream inputStream = new ByteArrayInputStream(contentBytes);
 
@@ -158,14 +154,6 @@ public class S3Service {
      */
     public boolean fileExists(String fileKey) {
         return amazonS3.doesObjectExist(bucketName, fileKey);
-    }
-
-    /**
-     * 고유한 파일 키 생성
-     */
-    private String generateFileKey(String fileName) {
-        String uuid = UUID.randomUUID().toString().substring(0, 8);
-        return "uploads/" + uuid + "_" + fileName;
     }
 
     /**

@@ -26,9 +26,8 @@ public class StoryData {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "story_json", columnDefinition = "LONGTEXT", nullable = false)
-    private String storyJson;
+    @Column(name = "story_file_key", nullable = false)
+    private String storyFileKey;
 
     @Column(name = "total_episodes")
     private Integer totalEpisodes;
