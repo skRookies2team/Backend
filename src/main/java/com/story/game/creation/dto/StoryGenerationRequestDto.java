@@ -26,6 +26,9 @@ public class StoryGenerationRequestDto {
     @JsonProperty("s3_upload_url")
     private String s3UploadUrl;
 
+    @JsonProperty("s3_file_key")
+    private String s3FileKey;
+
     @NotNull(message = "Selected gauge IDs are required")
     @Size(min = 2, message = "At least 2 gauges must be selected")
     @JsonProperty("selected_gauge_ids")

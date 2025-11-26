@@ -338,13 +338,20 @@ public class StoryManagementService {
                     new TypeReference<Map<String, Integer>>() {}
             );
 
+            // S3에 결과를 업로드할 Pre-signed URL 생성
+            String resultFileKey = "stories/" + UUID.randomUUID().toString() + ".json";
+            String s3UploadUrl = s3Service.generatePresignedUploadUrl(resultFileKey).getUrl();
+            log.info("Generated Pre-signed URL for AI server to upload result: {}", resultFileKey);
+
             // S3 파일인 경우와 일반 텍스트인 경우 구분
             StoryGenerationRequestDto.StoryGenerationRequestDtoBuilder requestBuilder = StoryGenerationRequestDto.builder()
                     .selectedGaugeIds(selectedGaugeIds)
                     .numEpisodes(storyCreation.getNumEpisodes())
                     .maxDepth(storyCreation.getMaxDepth())
                     .endingConfig(endingConfig)
-                    .numEpisodeEndings(storyCreation.getNumEpisodeEndings());
+                    .numEpisodeEndings(storyCreation.getNumEpisodeEndings())
+                    .s3UploadUrl(s3UploadUrl)
+                    .s3FileKey(resultFileKey);
 
             String aiEndpoint;
             if (storyCreation.getS3FileKey() != null && !storyCreation.getS3FileKey().isEmpty()) {
@@ -373,19 +380,39 @@ public class StoryManagementService {
                 throw new RuntimeException("Story generation failed");
             }
 
-            // 결과를 StoryData에 저장
-            String storyJson = objectMapper.writeValueAsString(response.getData());
+            String finalFileKey;
+            Integer totalEpisodes;
+            Integer totalNodes;
 
-            // S3에 스토리 JSON 업로드
-            String fileKey = "stories/" + UUID.randomUUID().toString() + ".json";
-            s3Service.uploadFile(fileKey, storyJson);
+            // 새로운 방식: AI 서버가 S3에 직접 업로드 (권장)
+            if (response.getFileKey() != null && response.getMetadata() != null) {
+                log.info("AI server uploaded result to S3 directly: {}", response.getFileKey());
+                finalFileKey = response.getFileKey();
+                totalEpisodes = response.getMetadata().getTotalEpisodes();
+                totalNodes = response.getMetadata().getTotalNodes();
+            }
+            // 레거시 방식: AI 서버가 전체 JSON 반환 (하위 호환성)
+            else if (response.getData() != null) {
+                log.warn("AI server returned full JSON (legacy mode). Consider upgrading to direct S3 upload.");
+                String storyJson = objectMapper.writeValueAsString(response.getData());
+
+                // 백엔드가 S3에 업로드
+                finalFileKey = "stories/" + UUID.randomUUID().toString() + ".json";
+                s3Service.uploadFile(finalFileKey, storyJson);
+
+                totalEpisodes = response.getData().getMetadata().getTotalEpisodes();
+                totalNodes = response.getData().getMetadata().getTotalNodes();
+            }
+            else {
+                throw new RuntimeException("Invalid response from AI server: no data or fileKey provided");
+            }
 
             StoryData storyData = StoryData.builder()
                     .title(storyCreation.getTitle())
                     .description(storyCreation.getDescription())
-                    .storyFileKey(fileKey)
-                    .totalEpisodes(response.getData().getMetadata().getTotalEpisodes())
-                    .totalNodes(response.getData().getMetadata().getTotalNodes())
+                    .storyFileKey(finalFileKey)
+                    .totalEpisodes(totalEpisodes)
+                    .totalNodes(totalNodes)
                     .build();
 
             storyData = storyDataRepository.save(storyData);

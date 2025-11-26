@@ -39,7 +39,7 @@ DB_PASSWORD=your_db_password
 AI_SERVER_URL=http://localhost:8000
 ```
 
-> 📖 자세한 설정 방법은 [ENV_SETUP.md](ENV_SETUP.md) 참고
+> 📖 자세한 설정 방법은 [ENV_SETUP.md](docs/ENV_SETUP.md) 참고
 
 또는 환경 변수를 직접 설정:
 
@@ -174,6 +174,21 @@ OpenAPI JSON 스펙:
 ```
 http://localhost:8080/v3/api-docs
 ```
+
+## 📚 Documentation
+
+프로젝트 문서는 `docs` 폴더에서 확인할 수 있습니다:
+
+### API 가이드
+- **[스토리 생성 API](docs/STORY_GENERATION_API.md)** - 9단계 세분화 프로세스
+- **[프론트엔드 연동 가이드](docs/FRONTEND_INTEGRATION_GUIDE.md)** - S3 파일 업로드 및 통합
+
+### 시스템 통합
+- **[AI 서버 S3 통합](docs/AI_SERVER_S3_INTEGRATION.md)** - AI 서버와 S3 직접 연동 가이드
+
+### 설정 및 배포
+- **[환경 설정](docs/ENV_SETUP.md)** - 데이터베이스, AWS, 환경 변수 설정
+- **[Gemini 설정](docs/GEMINI.md)** - Gemini AI 통합 설정
 
 ## 연결 테스트
 

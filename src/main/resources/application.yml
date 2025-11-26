@@ -47,6 +47,19 @@ aws:
     access-key: ${AWS_ACCESS_KEY:your-access-key}
     secret-key: ${AWS_SECRET_KEY:your-secret-key}
 
+# File Upload configuration
+app:
+  file-upload:
+    max-size:
+      story: 10485760    # 10MB in bytes
+      image: 5242880     # 5MB in bytes
+      video: 104857600   # 100MB in bytes
+    allowed-extensions:
+      story: txt,pdf,doc,docx
+      image: jpg,jpeg,png,gif,webp
+      video: mp4,avi,mov,wmv,flv,mkv
+    presigned-url-expiration: 900  # 15 minutes in seconds
+
 # Logging
 logging:
   level:
