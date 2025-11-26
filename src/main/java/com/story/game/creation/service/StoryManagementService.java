@@ -376,10 +376,14 @@ public class StoryManagementService {
             // 결과를 StoryData에 저장
             String storyJson = objectMapper.writeValueAsString(response.getData());
 
+            // S3에 스토리 JSON 업로드
+            String fileKey = "stories/" + UUID.randomUUID().toString() + ".json";
+            s3Service.uploadFile(fileKey, storyJson);
+
             StoryData storyData = StoryData.builder()
                     .title(storyCreation.getTitle())
                     .description(storyCreation.getDescription())
-                    .storyJson(storyJson)
+                    .storyFileKey(fileKey)
                     .totalEpisodes(response.getData().getMetadata().getTotalEpisodes())
                     .totalNodes(response.getData().getMetadata().getTotalNodes())
                     .build();
@@ -442,8 +446,11 @@ public class StoryManagementService {
                 .orElseThrow(() -> new RuntimeException("Story data not found"));
 
         try {
+            // S3에서 스토리 JSON 다운로드
+            String storyJson = s3Service.downloadFileContent(storyData.getStoryFileKey());
+
             // 첫 에피소드 정보 추출
-            FullStoryDto fullStory = objectMapper.readValue(storyData.getStoryJson(), FullStoryDto.class);
+            FullStoryDto fullStory = objectMapper.readValue(storyJson, FullStoryDto.class);
             EpisodeDto firstEpisode = fullStory.getEpisodes().stream()
                     .filter(ep -> ep.getOrder() == 1)
                     .findFirst()
@@ -519,7 +526,9 @@ public class StoryManagementService {
                 .orElseThrow(() -> new RuntimeException("Story data not found"));
 
         try {
-            return objectMapper.readValue(storyData.getStoryJson(), FullStoryDto.class);
+            // S3에서 스토리 JSON 다운로드
+            String storyJson = s3Service.downloadFileContent(storyData.getStoryFileKey());
+            return objectMapper.readValue(storyJson, FullStoryDto.class);
         } catch (Exception e) {
             log.error("Failed to parse story JSON", e);
             throw new RuntimeException("Failed to parse story data: " + e.getMessage());
