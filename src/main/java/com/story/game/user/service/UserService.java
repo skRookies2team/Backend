@@ -11,6 +11,7 @@ import com.story.game.achievement.entity.UserAchievement;
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +34,7 @@ public class UserService {
     private final AchievementService achievementService;
     private final PasswordEncoder passwordEncoder;
     private final S3Service s3Service;
+    private final FileUploadProperties uploadProperties;
 
     @Transactional(readOnly = true)
     public UserProfileDto getUserProfile(String username) {
@@ -121,9 +123,11 @@ public class UserService {
             throw new IllegalArgumentException("Only image files are allowed");
         }
 
-        // 파일 크기 검증 (5MB 제한)
-        if (imageFile.getSize() > 5 * 1024 * 1024) {
-            throw new IllegalArgumentException("Image file size must be less than 5MB");
+        // 파일 크기 검증 (설정값 사용)
+        long maxSize = uploadProperties.getMaxSize().getImage();
+        if (imageFile.getSize() > maxSize) {
+            long maxSizeMB = maxSize / (1024 * 1024);
+            throw new IllegalArgumentException("Image file size must be less than " + maxSizeMB + "MB");
         }
 
         try {

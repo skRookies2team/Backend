@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack-s3
+    ports:
+      - "4566:4566"  # LocalStack gateway
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+    volumes:
+      - "./localstack-data:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: story-game-db
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 1031
+      MYSQL_DATABASE: story_game
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+volumes:
+  mariadb-data:

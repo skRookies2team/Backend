@@ -1,0 +1,28 @@
+# LocalStack profile (로컬 S3 모킹)
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:mariadb://localhost:3306/story_game
+    username: root
+    password: 1031
+
+# LocalStack S3 설정 (로컬 테스트용)
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET:story-game-local}
+    region: ${AWS_S3_REGION:ap-northeast-2}
+    endpoint: ${AWS_S3_ENDPOINT:http://localhost:4566}  # LocalStack endpoint
+  credentials:
+    access-key: ${AWS_ACCESS_KEY:test}  # LocalStack은 더미 값 사용
+    secret-key: ${AWS_SECRET_KEY:test}
+
+ai-server:
+  url: http://localhost:8000
+
+logging:
+  level:
+    com.story.game: DEBUG
+    com.amazonaws: DEBUG

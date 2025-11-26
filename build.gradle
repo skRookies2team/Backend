@@ -58,4 +58,12 @@ dependencies {
 
 test {
     useJUnitPlatform()
+
+    // 시스템 프로퍼티를 테스트에 전달
+    systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'test')
+
+    // 환경 변수 사용 가능
+    if (System.getenv('SPRING_PROFILES_ACTIVE')) {
+        systemProperty 'spring.profiles.active', System.getenv('SPRING_PROFILES_ACTIVE')
+    }
 }

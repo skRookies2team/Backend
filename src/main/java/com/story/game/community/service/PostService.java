@@ -13,6 +13,7 @@ import com.story.game.community.repository.LikeRepository;
 import com.story.game.community.repository.PostMediaRepository;
 import com.story.game.community.repository.PostRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -34,6 +35,7 @@ public class PostService {
     private final BookmarkRepository bookmarkRepository;
     private final PostMediaRepository postMediaRepository;
     private final S3Service s3Service;
+    private final FileUploadProperties uploadProperties;
 
     @Transactional
     public PostResponseDto createPost(String username, CreatePostRequestDto request) {
@@ -176,12 +178,12 @@ public class PostService {
 
         if (contentType.startsWith("image/")) {
             mediaType = PostMedia.MediaType.IMAGE;
-            maxSize = 10 * 1024 * 1024; // 10MB
+            maxSize = uploadProperties.getMaxSize().getImage();
             maxCount = 10; // 이미지 최대 10개
             folder = "post-images";
         } else if (contentType.startsWith("video/")) {
             mediaType = PostMedia.MediaType.VIDEO;
-            maxSize = 100 * 1024 * 1024; // 100MB
+            maxSize = uploadProperties.getMaxSize().getVideo();
             maxCount = 3; // 동영상 최대 3개
             folder = "post-videos";
         } else {
