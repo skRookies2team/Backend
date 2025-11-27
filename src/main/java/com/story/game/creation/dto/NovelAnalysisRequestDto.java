@@ -23,6 +23,12 @@ public class NovelAnalysisRequestDto {
     @Builder.Default
     private String bucket = "story-game-bucket";
 
+    @JsonProperty("s3_upload_url")
+    private String s3UploadUrl;  // AI 서버가 분석 결과를 업로드할 Pre-signed URL
+
+    @JsonProperty("result_file_key")
+    private String resultFileKey;  // AI 서버가 업로드할 파일의 키
+
     // S3 방식인지 확인
     public boolean isS3Mode() {
         return fileKey != null && !fileKey.isBlank();

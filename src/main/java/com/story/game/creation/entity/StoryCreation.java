@@ -28,7 +28,10 @@ public class StoryCreation {
     private String novelText;
 
     @Column(name = "s3_file_key", length = 500)
-    private String s3FileKey;  // S3에 저장된 파일의 키 (선택사항)
+    private String s3FileKey;  // S3에 저장된 소설 파일의 키 (선택사항)
+
+    @Column(name = "analysis_result_file_key", length = 500)
+    private String analysisResultFileKey;  // S3에 저장된 분석 결과 파일의 키 (선택사항)
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

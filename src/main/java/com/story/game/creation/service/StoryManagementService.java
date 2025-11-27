@@ -123,10 +123,27 @@ public class StoryManagementService {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                 .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
 
+        String summary = null;
+
+        // S3 방식: analysisResultFileKey가 있으면 S3에서 다운로드
+        if (storyCreation.getAnalysisResultFileKey() != null && !storyCreation.getAnalysisResultFileKey().isBlank()) {
+            try {
+                String analysisJson = s3Service.downloadFileContent(storyCreation.getAnalysisResultFileKey());
+                NovelAnalysisResponseDto analysisData = objectMapper.readValue(analysisJson, NovelAnalysisResponseDto.class);
+                summary = analysisData.getSummary();
+            } catch (Exception e) {
+                log.error("Failed to download analysis result from S3: {}", storyCreation.getAnalysisResultFileKey(), e);
+            }
+        }
+        // 레거시 방식: DB에서 직접 읽기
+        else {
+            summary = storyCreation.getSummary();
+        }
+
         return StorySummaryResponseDto.builder()
                 .storyId(storyCreation.getId())
                 .status(storyCreation.getStatus())
-                .summary(storyCreation.getSummary())
+                .summary(summary)
                 .build();
     }
 
@@ -139,7 +156,19 @@ public class StoryManagementService {
                 .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
 
         List<CharacterDto> characters = null;
-        if (storyCreation.getCharactersJson() != null) {
+
+        // S3 방식: analysisResultFileKey가 있으면 S3에서 다운로드
+        if (storyCreation.getAnalysisResultFileKey() != null && !storyCreation.getAnalysisResultFileKey().isBlank()) {
+            try {
+                String analysisJson = s3Service.downloadFileContent(storyCreation.getAnalysisResultFileKey());
+                NovelAnalysisResponseDto analysisData = objectMapper.readValue(analysisJson, NovelAnalysisResponseDto.class);
+                characters = analysisData.getCharacters();
+            } catch (Exception e) {
+                log.error("Failed to download analysis result from S3: {}", storyCreation.getAnalysisResultFileKey(), e);
+            }
+        }
+        // 레거시 방식: DB에서 직접 읽기
+        else if (storyCreation.getCharactersJson() != null) {
             try {
                 characters = objectMapper.readValue(
                         storyCreation.getCharactersJson(),
@@ -166,7 +195,19 @@ public class StoryManagementService {
                 .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
 
         List<GaugeDto> gauges = null;
-        if (storyCreation.getGaugesJson() != null) {
+
+        // S3 방식: analysisResultFileKey가 있으면 S3에서 다운로드
+        if (storyCreation.getAnalysisResultFileKey() != null && !storyCreation.getAnalysisResultFileKey().isBlank()) {
+            try {
+                String analysisJson = s3Service.downloadFileContent(storyCreation.getAnalysisResultFileKey());
+                NovelAnalysisResponseDto analysisData = objectMapper.readValue(analysisJson, NovelAnalysisResponseDto.class);
+                gauges = analysisData.getGauges();
+            } catch (Exception e) {
+                log.error("Failed to download analysis result from S3: {}", storyCreation.getAnalysisResultFileKey(), e);
+            }
+        }
+        // 레거시 방식: DB에서 직접 읽기
+        else if (storyCreation.getGaugesJson() != null) {
             try {
                 gauges = objectMapper.readValue(
                         storyCreation.getGaugesJson(),
@@ -603,17 +644,24 @@ public class StoryManagementService {
     }
 
     /**
-     * S3 파일로 AI 분석 시작 (fileKey만 전달)
+     * S3 파일로 AI 분석 시작 (S3 업로드 방식)
      */
     @Transactional
     public void startAnalysisFromS3Async(String storyId, String fileKey) {
         try {
             log.info("Starting AI analysis from S3 for story: {}, bucket: {}, fileKey: {}", storyId, bucketName, fileKey);
 
-            // AI 서버에 fileKey만 전달 (AI 서버가 S3에서 직접 다운로드)
+            // S3에 분석 결과를 업로드할 Pre-signed URL 생성
+            String resultFileKey = "analysis/" + UUID.randomUUID().toString() + ".json";
+            String s3UploadUrl = s3Service.generatePresignedUploadUrl(resultFileKey).getUrl();
+            log.info("Generated Pre-signed URL for AI server to upload analysis result: {}", resultFileKey);
+
+            // AI 서버에 요청 전달 (AI 서버가 S3에서 소설 다운로드 → 분석 → 결과를 S3에 업로드)
             NovelAnalysisRequestDto aiRequest = NovelAnalysisRequestDto.builder()
                     .fileKey(fileKey)
                     .bucket(bucketName)
+                    .s3UploadUrl(s3UploadUrl)
+                    .resultFileKey(resultFileKey)
                     .build();
 
             NovelAnalysisResponseDto response = aiServerWebClient.post()
@@ -631,9 +679,20 @@ public class StoryManagementService {
             StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                     .orElseThrow(() -> new RuntimeException("Story not found"));
 
-            storyCreation.setSummary(response.getSummary());
-            storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
-            storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
+            // 새로운 방식: AI 서버가 S3에 직접 업로드 (권장)
+            if (response.isS3Mode()) {
+                log.info("AI server uploaded analysis result to S3 directly: {}", response.getFileKey());
+                storyCreation.setAnalysisResultFileKey(response.getFileKey());
+                // summary, characters, gauges는 S3에 저장되어 있으므로 DB에는 저장하지 않음
+            }
+            // 레거시 방식: AI 서버가 전체 데이터 반환 (하위 호환성)
+            else {
+                log.warn("AI server returned full data (legacy mode). Consider upgrading to S3 upload.");
+                storyCreation.setSummary(response.getSummary());
+                storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
+                storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
+            }
+
             storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
             storyCreation.setCurrentPhase("GAUGES_READY");
             storyCreation.setProgressPercentage(30);
