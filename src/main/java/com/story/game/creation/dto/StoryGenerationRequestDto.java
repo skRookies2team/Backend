@@ -1,6 +1,7 @@
 package com.story.game.creation.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.story.game.common.dto.GaugeDto;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -33,6 +34,11 @@ public class StoryGenerationRequestDto {
     @Size(min = 2, message = "At least 2 gauges must be selected")
     @JsonProperty("selected_gauge_ids")
     private List<String> selectedGaugeIds;
+
+    @NotNull(message = "Selected gauges are required")
+    @Size(min = 2, message = "At least 2 gauges must be selected")
+    @JsonProperty("selected_gauges")
+    private List<GaugeDto> selectedGauges;  // ← 게이지 정보 전체!
 
     @Min(1)
     @Max(10)

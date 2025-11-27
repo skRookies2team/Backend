@@ -382,6 +382,9 @@ public class StoryManagementService {
                     new TypeReference<Map<String, Integer>>() {}
             );
 
+            // 선택된 게이지 정보 전체 가져오기
+            List<GaugeDto> selectedGauges = getSelectedGaugesInfo(storyCreation, selectedGaugeIds);
+
             // S3에 결과를 업로드할 Pre-signed URL 생성
             String resultFileKey = "stories/" + UUID.randomUUID().toString() + ".json";
             String s3UploadUrl = s3Service.generatePresignedUploadUrl(resultFileKey).getUrl();
@@ -390,6 +393,7 @@ public class StoryManagementService {
             // S3 파일인 경우와 일반 텍스트인 경우 구분
             StoryGenerationRequestDto.StoryGenerationRequestDtoBuilder requestBuilder = StoryGenerationRequestDto.builder()
                     .selectedGaugeIds(selectedGaugeIds)
+                    .selectedGauges(selectedGauges)  // ← 게이지 정보 전체 추가!
                     .numEpisodes(storyCreation.getNumEpisodes())
                     .maxDepth(storyCreation.getMaxDepth())
                     .endingConfig(endingConfig)
@@ -641,6 +645,42 @@ public class StoryManagementService {
                 .status(storyCreation.getStatus())
                 .createdAt(storyCreation.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * 선택된 게이지 정보 전체 가져오기
+     */
+    private List<GaugeDto> getSelectedGaugesInfo(StoryCreation storyCreation, List<String> selectedGaugeIds) {
+        try {
+            List<GaugeDto> allGauges = null;
+
+            // S3 방식: analysisResultFileKey가 있으면 S3에서 다운로드
+            if (storyCreation.getAnalysisResultFileKey() != null && !storyCreation.getAnalysisResultFileKey().isBlank()) {
+                String analysisJson = s3Service.downloadFileContent(storyCreation.getAnalysisResultFileKey());
+                NovelAnalysisResponseDto analysisData = objectMapper.readValue(analysisJson, NovelAnalysisResponseDto.class);
+                allGauges = analysisData.getGauges();
+            }
+            // 레거시 방식: DB에서 직접 읽기
+            else if (storyCreation.getGaugesJson() != null) {
+                allGauges = objectMapper.readValue(
+                        storyCreation.getGaugesJson(),
+                        new TypeReference<List<GaugeDto>>() {}
+                );
+            }
+
+            if (allGauges == null) {
+                throw new RuntimeException("No gauges found");
+            }
+
+            // 선택된 게이지만 필터링
+            return allGauges.stream()
+                    .filter(g -> selectedGaugeIds.contains(g.getId()))
+                    .toList();
+
+        } catch (Exception e) {
+            log.error("Failed to get selected gauges info", e);
+            throw new RuntimeException("Failed to get selected gauges info: " + e.getMessage());
+        }
     }
 
     /**
