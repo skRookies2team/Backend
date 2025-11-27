@@ -56,8 +56,38 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+// .env 파일 읽기 함수 (재사용)
+def loadEnvFile() {
+    def envFile = file('.env')
+    if (envFile.exists()) {
+        def envMap = [:]
+        envFile.readLines().each { line ->
+            if (line && !line.startsWith('#') && line.contains('=')) {
+                def (key, value) = line.split('=', 2)
+                envMap[key.trim()] = value.trim()
+            }
+        }
+        return envMap
+    }
+    return [:]
+}
+
+bootRun {
+    // .env 파일 환경변수 로드
+    def envVars = loadEnvFile()
+    envVars.each { key, value ->
+        environment key, value
+    }
+}
+
 test {
     useJUnitPlatform()
+
+    // .env 파일 환경변수 로드
+    def envVars = loadEnvFile()
+    envVars.each { key, value ->
+        environment key, value
+    }
 
     // 시스템 프로퍼티를 테스트에 전달
     systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'test')
