@@ -31,6 +31,9 @@ public class StoryManagementService {
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
 
+    @org.springframework.beans.factory.annotation.Value("${aws.s3.bucket}")
+    private String bucketName;
+
     /**
      * 1. 소설 업로드 및 분석 시작
      */
@@ -357,9 +360,9 @@ public class StoryManagementService {
             if (storyCreation.getS3FileKey() != null && !storyCreation.getS3FileKey().isEmpty()) {
                 // S3 파일 사용
                 requestBuilder.fileKey(storyCreation.getS3FileKey())
-                             .bucket("story-game-bucket");
+                             .bucket(bucketName);
                 aiEndpoint = "/generate-from-s3";
-                log.info("Calling AI server for story generation from S3: {}", storyCreation.getS3FileKey());
+                log.info("Calling AI server for story generation from S3: bucket={}, fileKey={}", bucketName, storyCreation.getS3FileKey());
             } else {
                 // 일반 텍스트 사용
                 requestBuilder.novelText(storyCreation.getNovelText());
@@ -605,12 +608,12 @@ public class StoryManagementService {
     @Transactional
     public void startAnalysisFromS3Async(String storyId, String fileKey) {
         try {
-            log.info("Starting AI analysis from S3 for story: {}, fileKey: {}", storyId, fileKey);
+            log.info("Starting AI analysis from S3 for story: {}, bucket: {}, fileKey: {}", storyId, bucketName, fileKey);
 
             // AI 서버에 fileKey만 전달 (AI 서버가 S3에서 직접 다운로드)
             NovelAnalysisRequestDto aiRequest = NovelAnalysisRequestDto.builder()
                     .fileKey(fileKey)
-                    .bucket("story-game-bucket")
+                    .bucket(bucketName)
                     .build();
 
             NovelAnalysisResponseDto response = aiServerWebClient.post()
