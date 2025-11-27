@@ -37,7 +37,8 @@ public class CommentController {
     public ResponseEntity<List<CommentResponseDto>> getComments(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Long postId) {
-        return ResponseEntity.ok(commentService.getCommentsByPost(userDetails.getUsername(), postId));
+        String username = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(commentService.getCommentsByPost(username, postId));
     }
 
     // ===== 개별 댓글 작업 (commentId만 필요) =====

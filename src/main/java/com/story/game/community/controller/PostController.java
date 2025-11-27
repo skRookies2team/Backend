@@ -58,7 +58,8 @@ public class PostController {
     public ResponseEntity<PostResponseDto> getPost(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Long postId) {
-        return ResponseEntity.ok(postService.getPost(userDetails.getUsername(), postId));
+        String username = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(postService.getPost(username, postId));
     }
 
     @GetMapping
@@ -66,7 +67,8 @@ public class PostController {
     public ResponseEntity<Page<PostResponseDto>> getPosts(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(postService.getPosts(userDetails.getUsername(), pageable));
+        String username = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(postService.getPosts(username, pageable));
     }
 
     @GetMapping("/type/{type}")
@@ -75,7 +77,8 @@ public class PostController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Post.PostType type,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(postService.getPostsByType(userDetails.getUsername(), type, pageable));
+        String username = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(postService.getPostsByType(username, type, pageable));
     }
 
     @GetMapping("/search")
@@ -84,7 +87,8 @@ public class PostController {
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam String keyword,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(postService.searchPosts(userDetails.getUsername(), keyword, pageable));
+        String username = userDetails != null ? userDetails.getUsername() : null;
+        return ResponseEntity.ok(postService.searchPosts(username, keyword, pageable));
     }
 
     @PostMapping("/{postId}/like")

@@ -78,10 +78,38 @@ public class CommentService {
 
     @Transactional(readOnly = true)
     public List<CommentResponseDto> getCommentsByPost(String username, Long postId) {
-        User user = getUserByUsername(username);
         Post post = getPostById(postId);
-
         List<Comment> topLevelComments = commentRepository.findByPostAndParentIsNullOrderByCreatedAtAsc(post);
+
+        // 비로그인 사용자는 좋아요 정보 없이 반환
+        if (username == null) {
+            return topLevelComments.stream()
+                    .map(comment -> {
+                        CommentResponseDto dto = CommentResponseDto.from(comment, false);
+
+                        // 대댓글 로드
+                        List<Comment> replies = commentRepository.findByParentOrderByCreatedAtAsc(comment);
+                        List<CommentResponseDto> replyDtos = replies.stream()
+                                .map(reply -> CommentResponseDto.from(reply, false))
+                                .collect(Collectors.toList());
+
+                        return CommentResponseDto.builder()
+                                .commentId(dto.getCommentId())
+                                .authorUsername(dto.getAuthorUsername())
+                                .authorNickname(dto.getAuthorNickname())
+                                .content(dto.getContent())
+                                .parentId(dto.getParentId())
+                                .likeCount(dto.getLikeCount())
+                                .isLiked(false)
+                                .createdAt(dto.getCreatedAt())
+                                .updatedAt(dto.getUpdatedAt())
+                                .replies(replyDtos)
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+        }
+
+        User user = getUserByUsername(username);
 
         return topLevelComments.stream()
                 .map(comment -> {

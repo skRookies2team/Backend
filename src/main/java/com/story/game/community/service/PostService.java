@@ -81,6 +81,11 @@ public class PostService {
         post.incrementViewCount();
         postRepository.save(post);
 
+        // 비로그인 사용자는 좋아요/북마크 정보 없이 반환
+        if (username == null) {
+            return PostResponseDto.from(post, false, false);
+        }
+
         User user = getUserByUsername(username);
         return PostResponseDto.from(post,
                 isLiked(user, postId),
@@ -89,6 +94,12 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public Page<PostResponseDto> getPosts(String username, Pageable pageable) {
+        // 비로그인 사용자는 좋아요/북마크 정보 없이 반환
+        if (username == null) {
+            return postRepository.findAllByOrderByCreatedAtDesc(pageable)
+                    .map(post -> PostResponseDto.from(post, false, false));
+        }
+
         User user = getUserByUsername(username);
         return postRepository.findAllByOrderByCreatedAtDesc(pageable)
                 .map(post -> PostResponseDto.from(post,
@@ -98,6 +109,12 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public Page<PostResponseDto> getPostsByType(String username, Post.PostType type, Pageable pageable) {
+        // 비로그인 사용자는 좋아요/북마크 정보 없이 반환
+        if (username == null) {
+            return postRepository.findByTypeOrderByCreatedAtDesc(type, pageable)
+                    .map(post -> PostResponseDto.from(post, false, false));
+        }
+
         User user = getUserByUsername(username);
         return postRepository.findByTypeOrderByCreatedAtDesc(type, pageable)
                 .map(post -> PostResponseDto.from(post,
@@ -107,6 +124,12 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public Page<PostResponseDto> searchPosts(String username, String keyword, Pageable pageable) {
+        // 비로그인 사용자는 좋아요/북마크 정보 없이 반환
+        if (username == null) {
+            return postRepository.findByTitleContainingOrContentContaining(keyword, keyword, pageable)
+                    .map(post -> PostResponseDto.from(post, false, false));
+        }
+
         User user = getUserByUsername(username);
         return postRepository.findByTitleContainingOrContentContaining(keyword, keyword, pageable)
                 .map(post -> PostResponseDto.from(post,
