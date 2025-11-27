@@ -1,0 +1,297 @@
+{
+  "metadata": {
+    "total_episodes": 2,
+    "total_nodes": 7,
+    "gauges": ["hope", "trust"],
+    "character_count": 2
+  },
+  "context": {
+    "novel_summary": "두 친구가 무인도에 표류하여 생존을 위해 협력하거나 대립하는 이야기",
+    "characters": [
+      {
+        "name": "민수",
+        "aliases": ["민수", "리더"],
+        "description": "차분하고 신중한 성격의 고등학생",
+        "relationships": ["지훈의 친구"]
+      },
+      {
+        "name": "지훈",
+        "aliases": ["지훈", "탐험가"],
+        "description": "활동적이고 모험을 좋아하는 고등학생",
+        "relationships": ["민수의 친구"]
+      }
+    ],
+    "selected_gauges": [
+      {
+        "id": "hope",
+        "name": "희망",
+        "meaning": "생존에 대한 희망과 낙관성",
+        "min_label": "절망",
+        "max_label": "희망",
+        "description": "탈출 가능성에 대한 믿음"
+      },
+      {
+        "id": "trust",
+        "name": "신뢰",
+        "meaning": "서로에 대한 신뢰도",
+        "min_label": "불신",
+        "max_label": "신뢰",
+        "description": "두 친구 사이의 신뢰 관계"
+      }
+    ],
+    "final_endings": [
+      {
+        "id": "ending_good",
+        "type": "happy",
+        "title": "희망의 구조",
+        "condition": "hope >= 60 AND trust >= 60",
+        "summary": "두 친구는 서로를 믿으며 협력한 끝에 구조되었다."
+      },
+      {
+        "id": "ending_neutral",
+        "type": "neutral",
+        "title": "각자의 길",
+        "condition": "trust < 40",
+        "summary": "신뢰가 깨진 두 사람은 따로 행동하며 겨우 생존했다."
+      },
+      {
+        "id": "ending_bad",
+        "type": "sad",
+        "title": "절망의 섬",
+        "condition": "hope < 30",
+        "summary": "희망을 잃은 두 사람은 섬에서 벗어날 수 없었다."
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "id": "ep1",
+      "title": "첫날 밤",
+      "order": 1,
+      "description": "무인도에 표류한 첫날, 생존을 위한 선택",
+      "theme": "협력 vs 독립",
+      "intro_text": "파도 소리에 눈을 뜬 민수와 지훈. 낯선 해변에 누워있는 자신들을 발견했다.",
+      "nodes": [
+        {
+          "id": "ep1_node_0",
+          "depth": 0,
+          "text": "\"여기가... 어디지?\" 민수가 주변을 둘러보며 말했다. 지훈도 천천히 일어나 해변을 살폈다. 멀리 숲이 보이고, 파도가 해변을 적시고 있다.",
+          "details": {
+            "npc_emotions": {
+              "민수": "당황스러움",
+              "지훈": "불안함"
+            },
+            "situation": "무인도 해변에서 깨어남",
+            "relations_update": {}
+          },
+          "choices": [
+            {
+              "text": "일단 숲을 탐험해서 식수와 음식을 찾자",
+              "tags": ["cooperative", "proactive"]
+            },
+            {
+              "text": "해변에서 구조 신호를 만들자",
+              "tags": ["hopeful", "cautious"]
+            }
+          ],
+          "parent_id": null,
+          "node_type": "root",
+          "episode_id": "ep1"
+        },
+        {
+          "id": "ep1_node_1_0",
+          "depth": 1,
+          "text": "두 사람은 협력하여 숲으로 들어갔다. 얼마 지나지 않아 작은 샘물을 발견했다. \"찾았다!\" 지훈이 기뻐하며 외쳤다.",
+          "details": {
+            "npc_emotions": {
+              "민수": "안도감",
+              "지훈": "기쁨"
+            },
+            "situation": "식수 발견",
+            "relations_update": {
+              "trust": "협력으로 신뢰 증가"
+            }
+          },
+          "choices": [
+            {
+              "text": "계속 탐험하며 더 많은 자원을 찾는다",
+              "tags": ["ambitious", "trusting"]
+            },
+            {
+              "text": "일단 해변으로 돌아가 캠프를 만든다",
+              "tags": ["cautious", "cooperative"]
+            }
+          ],
+          "parent_id": "ep1_node_0",
+          "node_type": "normal",
+          "episode_id": "ep1"
+        },
+        {
+          "id": "ep1_node_1_1",
+          "depth": 1,
+          "text": "해변에 큰 'SOS' 글자를 돌로 만들었다. \"이제 누군가 발견해주기를 기다리는 수밖에...\" 민수가 말했다.",
+          "details": {
+            "npc_emotions": {
+              "민수": "희망적",
+              "지훈": "불안함"
+            },
+            "situation": "구조 신호 완성",
+            "relations_update": {}
+          },
+          "choices": [
+            {
+              "text": "이제 식수를 찾으러 가자",
+              "tags": ["practical", "cooperative"]
+            },
+            {
+              "text": "해변에서 계속 대기한다",
+              "tags": ["passive", "hopeful"]
+            }
+          ],
+          "parent_id": "ep1_node_0",
+          "node_type": "normal",
+          "episode_id": "ep1"
+        }
+      ],
+      "endings": [
+        {
+          "id": "ep1_ending_coop",
+          "title": "협력의 시작",
+          "condition": "cooperative >= 2",
+          "text": "첫날을 함께 협력하며 보낸 두 사람은 서로를 더 신뢰하게 되었다.",
+          "gauge_changes": {
+            "hope": 10,
+            "trust": 15
+          }
+        },
+        {
+          "id": "ep1_ending_cautious",
+          "title": "신중한 접근",
+          "condition": "cautious >= 1",
+          "text": "신중하게 상황을 판단한 덕분에 큰 문제 없이 첫날을 보냈다.",
+          "gauge_changes": {
+            "hope": 5,
+            "trust": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "ep2",
+      "title": "갈등",
+      "order": 2,
+      "description": "생존 방법을 두고 의견이 갈린다",
+      "theme": "신뢰의 시험",
+      "intro_text": "며칠이 지났지만 구조의 기미는 보이지 않는다. 식량도 부족해지기 시작했다.",
+      "nodes": [
+        {
+          "id": "ep2_node_0",
+          "depth": 0,
+          "text": "\"계속 여기 있으면 안 돼. 섬 반대편으로 가보자.\" 지훈이 제안했다. 하지만 민수는 고개를 저었다. \"여기서 기다리는 게 안전해.\"",
+          "details": {
+            "npc_emotions": {
+              "민수": "우려",
+              "지훈": "답답함"
+            },
+            "situation": "의견 충돌",
+            "relations_update": {}
+          },
+          "choices": [
+            {
+              "text": "지훈의 의견을 따라 탐험한다",
+              "tags": ["adventurous", "trusting"]
+            },
+            {
+              "text": "민수의 의견대로 현재 위치를 지킨다",
+              "tags": ["cautious", "conservative"]
+            },
+            {
+              "text": "타협안을 제시한다",
+              "tags": ["diplomatic", "cooperative"]
+            }
+          ],
+          "parent_id": null,
+          "node_type": "root",
+          "episode_id": "ep2"
+        },
+        {
+          "id": "ep2_node_1_0",
+          "depth": 1,
+          "text": "둘은 함께 섬 반대편으로 향했다. 험난한 여정이었지만, 그곳에서 작은 오두막을 발견했다!",
+          "details": {
+            "npc_emotions": {
+              "민수": "놀람",
+              "지훈": "흥분"
+            },
+            "situation": "오두막 발견",
+            "relations_update": {
+              "trust": "모험이 성공하여 신뢰 증가"
+            }
+          },
+          "choices": [],
+          "parent_id": "ep2_node_0",
+          "node_type": "leaf",
+          "episode_id": "ep2"
+        },
+        {
+          "id": "ep2_node_1_1",
+          "depth": 1,
+          "text": "현재 캠프를 강화하기로 했다. 지훈은 조금 실망한 듯 보였지만 협력했다.",
+          "details": {
+            "npc_emotions": {
+              "민수": "안도",
+              "지훈": "아쉬움"
+            },
+            "situation": "캠프 강화",
+            "relations_update": {}
+          },
+          "choices": [],
+          "parent_id": "ep2_node_0",
+          "node_type": "leaf",
+          "episode_id": "ep2"
+        },
+        {
+          "id": "ep2_node_1_2",
+          "depth": 1,
+          "text": "\"한 명은 여기 남고, 한 명은 탐험하는 건 어때?\" 두 사람은 이 타협안에 동의했다.",
+          "details": {
+            "npc_emotions": {
+              "민수": "만족",
+              "지훈": "만족"
+            },
+            "situation": "타협 성공",
+            "relations_update": {
+              "trust": "좋은 타협"
+            }
+          },
+          "choices": [],
+          "parent_id": "ep2_node_0",
+          "node_type": "leaf",
+          "episode_id": "ep2"
+        }
+      ],
+      "endings": [
+        {
+          "id": "ep2_ending_trust",
+          "title": "깊어진 신뢰",
+          "condition": "trusting >= 1",
+          "text": "어려운 상황에서도 서로를 믿은 두 사람의 우정은 더욱 깊어졌다.",
+          "gauge_changes": {
+            "hope": 15,
+            "trust": 20
+          }
+        },
+        {
+          "id": "ep2_ending_careful",
+          "title": "조심스러운 동행",
+          "condition": "cautious >= 1",
+          "text": "신중한 선택 덕분에 안전하게 지냈지만, 진전은 느렸다.",
+          "gauge_changes": {
+            "hope": 5,
+            "trust": 0
+          }
+        }
+      ]
+    }
+  ]
+}

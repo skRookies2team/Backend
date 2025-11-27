@@ -1,0 +1,153 @@
+package com.story.game.gameplay.controller;
+
+import com.story.game.gameplay.dto.*;
+import com.story.game.common.dto.*;
+import com.story.game.creation.dto.*;
+import com.story.game.common.entity.StoryData;
+import com.story.game.gameplay.service.GameService;
+import com.story.game.creation.service.StoryGenerationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/game")
+@RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
+@Tag(name = "Game", description = "게임 플레이 및 스토리 관리 API")
+public class GameController {
+
+    private final GameService gameService;
+    private final StoryGenerationService storyGenerationService;
+
+    /**
+     * Start a new game session
+     */
+    @PostMapping("/start")
+    public ResponseEntity<GameStateResponseDto> startGame(
+            @RequestBody StartGameRequestDto request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Start Game Request ===");
+        log.info("StoryDataId: {}", request.getStoryDataId());
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
+        GameStateResponseDto response = gameService.startGame(request.getStoryDataId());
+        log.info("Game started. SessionId: {}", response.getSessionId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get current game state
+     */
+    @GetMapping("/{sessionId}")
+    public ResponseEntity<GameStateResponseDto> getGameState(
+            @PathVariable String sessionId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Get Game State Request ===");
+        log.info("SessionId: {}", sessionId);
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
+        GameStateResponseDto response = gameService.getGameState(sessionId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Make a choice and progress the story
+     */
+    @PostMapping("/{sessionId}/choice")
+    public ResponseEntity<GameStateResponseDto> makeChoice(
+            @PathVariable String sessionId,
+            @RequestBody ChoiceRequestDto request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Make Choice Request ===");
+        log.info("SessionId: {}", sessionId);
+        log.info("ChoiceIndex: {}", request.getChoiceIndex());
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
+        GameStateResponseDto response = gameService.makeChoice(sessionId, request.getChoiceIndex());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all available stories
+     */
+    @GetMapping("/stories")
+    public ResponseEntity<List<StoryData>> getAllStories() {
+        List<StoryData> stories = gameService.getAllStories();
+        return ResponseEntity.ok(stories);
+    }
+
+    /**
+     * Upload a new story (JSON from Python AI server)
+     */
+    @PostMapping("/stories")
+    public ResponseEntity<StoryData> uploadStory(
+            @RequestParam String title,
+            @RequestParam(required = false) String description,
+            @RequestBody String storyJson) {
+        StoryData storyData = gameService.saveStoryData(title, description, storyJson);
+        return ResponseEntity.ok(storyData);
+    }
+
+    /**
+     * Analyze novel text to extract summary, characters, and gauges
+     */
+    @PostMapping("/stories/analyze")
+    public ResponseEntity<NovelAnalysisResponseDto> analyzeNovel(@RequestBody Map<String, String> request) {
+        log.info("=== Analyze Novel Request ===");
+        String novelText = request.get("novelText");
+        if (novelText == null || novelText.isBlank()) {
+            throw new IllegalArgumentException("Novel text is required");
+        }
+        NovelAnalysisResponseDto response = storyGenerationService.analyzeNovel(novelText);
+        log.info("Analysis completed: {} characters, {} gauges",
+                response.getCharacters().size(), response.getGauges().size());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Generate a new story using Python AI server
+     */
+    @PostMapping("/stories/generate")
+    public ResponseEntity<StoryData> generateStory(@Valid @RequestBody GenerateStoryRequestDto request) {
+        StoryData storyData = storyGenerationService.generateStory(request);
+        return ResponseEntity.ok(storyData);
+    }
+
+    /**
+     * Check AI server health status
+     */
+    @GetMapping("/ai/health")
+    public ResponseEntity<Map<String, Object>> checkAiHealth() {
+        boolean isHealthy = storyGenerationService.checkAiServerHealth();
+        return ResponseEntity.ok(Map.of(
+                "status", isHealthy ? "healthy" : "unhealthy",
+                "aiServer", isHealthy
+        ));
+    }
+
+    /**
+     * Get full story data by storyDataId (for frontend game composition)
+     */
+    @GetMapping("/stories/{storyDataId}/data")
+    public ResponseEntity<FullStoryDto> getStoryData(
+            @PathVariable Long storyDataId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Get Story Data Request ===");
+        log.info("StoryDataId: {}", storyDataId);
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
+
+        FullStoryDto response = gameService.getStoryDataById(storyDataId);
+
+        log.info("Story data retrieved: {} episodes, {} nodes",
+                response.getMetadata().getTotalEpisodes(),
+                response.getMetadata().getTotalNodes());
+        return ResponseEntity.ok(response);
+    }
+}

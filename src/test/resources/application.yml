@@ -1,0 +1,49 @@
+# Test profile - H2 인메모리 DB 사용
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  h2:
+    console:
+      enabled: true
+
+# JWT configuration (테스트용)
+jwt:
+  secret: test-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-please-change-this
+  access-token-validity: 3600000
+  refresh-token-validity: 604800000
+
+# AWS S3 설정 (테스트용 - 더미 값)
+aws:
+  s3:
+    bucket: test-bucket
+    region: ap-northeast-2
+    endpoint: http://localhost:4566
+  credentials:
+    access-key: test
+    secret-key: test
+
+# AI 서버
+ai-server:
+  url: http://localhost:8000
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.story.game: DEBUG
+
+
+
