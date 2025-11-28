@@ -7,7 +7,7 @@ spring:
   datasource:
     url: jdbc:mariadb://localhost:3306/story_game
     username: root
-    password: 1031
+    password: ${DB_PASSWORD}
 
   jpa:
     show-sql: true

@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:story_game}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:1031}
+    password: ${DB_PASSWORD}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:

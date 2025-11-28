@@ -50,6 +50,9 @@ dependencies {
     // AWS SDK for S3
     implementation 'com.amazonaws:aws-java-sdk-s3:1.12.565'
 
+    // .env file support
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
@@ -73,21 +76,23 @@ def loadEnvFile() {
 }
 
 bootRun {
-    // .env 파일 환경변수 로드
-    def envVars = loadEnvFile()
-    envVars.each { key, value ->
-        environment key, value
-    }
+    // spring-dotenv 라이브러리가 자동으로 .env 파일을 로드합니다
+    // 아래 코드는 더 이상 필요 없지만, bootRun 실행 시 명시적으로 환경변수를 설정하고 싶다면 유지 가능
+    // def envVars = loadEnvFile()
+    // envVars.each { key, value ->
+    //     environment key, value
+    // }
 }
 
 test {
     useJUnitPlatform()
 
-    // .env 파일 환경변수 로드
-    def envVars = loadEnvFile()
-    envVars.each { key, value ->
-        environment key, value
-    }
+    // spring-dotenv 라이브러리가 자동으로 .env 파일을 로드합니다
+    // 테스트 환경에서도 명시적으로 환경변수를 설정하고 싶다면 아래 주석 해제
+    // def envVars = loadEnvFile()
+    // envVars.each { key, value ->
+    //     environment key, value
+    // }
 
     // 시스템 프로퍼티를 테스트에 전달
     systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'test')
