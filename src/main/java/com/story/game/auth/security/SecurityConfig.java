@@ -36,6 +36,12 @@ public class SecurityConfig {
                         // 인증 관련 - 모두 허용
                         .requestMatchers("/api/auth/**").permitAll()
 
+                        // 파일 업로드 - 모두 허용
+                        .requestMatchers("/api/upload/**").permitAll()
+
+                        // 스토리 생성 관리 - 모두 허용
+                        .requestMatchers("/api/stories/**").permitAll()
+
                         // 게임 스토리 조회 - 로그인 없이 가능
                         .requestMatchers(HttpMethod.GET, "/api/game/stories/**").permitAll()
                         .requestMatchers("/api/game/ai/health").permitAll()

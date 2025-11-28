@@ -253,11 +253,26 @@ public class StoryManagementService {
 
             storyCreation = storyCreationRepository.save(storyCreation);
 
-            // 선택된 게이지 정보 반환
-            List<GaugeDto> allGauges = objectMapper.readValue(
-                    storyCreation.getGaugesJson(),
-                    new TypeReference<List<GaugeDto>>() {}
-            );
+            // 선택된 게이지 정보 반환 (S3 방식과 레거시 방식 모두 지원)
+            List<GaugeDto> allGauges = null;
+
+            // S3 방식: analysisResultFileKey가 있으면 S3에서 다운로드
+            if (storyCreation.getAnalysisResultFileKey() != null && !storyCreation.getAnalysisResultFileKey().isBlank()) {
+                String analysisJson = s3Service.downloadFileContent(storyCreation.getAnalysisResultFileKey());
+                NovelAnalysisResponseDto analysisData = objectMapper.readValue(analysisJson, NovelAnalysisResponseDto.class);
+                allGauges = analysisData.getGauges();
+            }
+            // 레거시 방식: DB에서 직접 읽기
+            else if (storyCreation.getGaugesJson() != null) {
+                allGauges = objectMapper.readValue(
+                        storyCreation.getGaugesJson(),
+                        new TypeReference<List<GaugeDto>>() {}
+                );
+            }
+
+            if (allGauges == null) {
+                throw new RuntimeException("No gauges found");
+            }
 
             List<GaugeDto> selectedGauges = allGauges.stream()
                     .filter(g -> request.getSelectedGaugeIds().contains(g.getId()))
@@ -531,16 +546,6 @@ public class StoryManagementService {
                     .findFirst()
                     .orElse(null);
 
-            List<GaugeDto> selectedGauges = objectMapper.readValue(
-                    storyCreation.getSelectedGaugeIdsJson(),
-                    new TypeReference<List<String>>() {}
-            ).stream()
-                    .map(id -> fullStory.getContext().getSelectedGauges().stream()
-                            .filter(g -> g.getId().equals(id))
-                            .findFirst()
-                            .orElse(null))
-                    .toList();
-
             return StoryResultResponseDto.builder()
                     .storyId(storyCreation.getId())
                     .status(storyCreation.getStatus())
@@ -556,7 +561,7 @@ public class StoryManagementService {
                     .preview(StoryResultResponseDto.PreviewData.builder()
                             .firstEpisodeTitle(firstEpisode != null ? firstEpisode.getTitle() : null)
                             .firstEpisodeIntro(firstEpisode != null ? firstEpisode.getIntroText() : null)
-                            .selectedGauges(selectedGauges)
+                            .selectedGauges(null)  // 게이지는 표시하지 않음
                             .build())
                     .build();
 
