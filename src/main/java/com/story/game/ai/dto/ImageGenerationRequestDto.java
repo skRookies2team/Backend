@@ -1,0 +1,23 @@
+package com.story.game.ai.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.Map;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ImageGenerationRequestDto {
+    private String nodeText;
+    private String situation;
+    private Map<String, String> npcEmotions;
+    private String episodeTitle;
+    private Integer episodeOrder;
+    private Integer nodeDepth;
+    private String imageStyle;
+    private String additionalContext;
+}

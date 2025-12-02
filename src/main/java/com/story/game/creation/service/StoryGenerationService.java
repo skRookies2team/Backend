@@ -24,7 +24,7 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class StoryGenerationService {
 
-    private final WebClient aiServerWebClient;
+    private final WebClient relayServerWebClient;
     private final StoryDataRepository storyDataRepository;
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
@@ -40,21 +40,21 @@ public class StoryGenerationService {
             .novelText(novelText)
             .build();
 
-        NovelAnalysisResponseDto response = aiServerWebClient.post()
-            .uri("/analyze")
+        NovelAnalysisResponseDto response = relayServerWebClient.post()
+            .uri("/ai/analyze")
             .bodyValue(request)
             .retrieve()
             .bodyToMono(NovelAnalysisResponseDto.class)
             .timeout(Duration.ofMinutes(3))
             .onErrorResume(WebClientResponseException.class, e -> {
-                log.error("AI server error during analysis: {} - {}",
+                log.error("Relay server error during analysis: {} - {}",
                     e.getStatusCode(), e.getResponseBodyAsString());
                 return Mono.error(new RuntimeException("AI analysis failed: " + e.getMessage()));
             })
             .block();
 
         if (response == null) {
-            throw new RuntimeException("No response from AI server during analysis");
+            throw new RuntimeException("No response from relay server during analysis");
         }
 
         log.info("Novel analysis completed: {} characters, {} gauges extracted",
@@ -87,22 +87,22 @@ public class StoryGenerationService {
             .s3UploadUrl(presignedUrlInfo.getUrl())
             .build();
 
-        // 3. Call AI server
-        StoryGenerationResponseDto response = aiServerWebClient.post()
-            .uri("/generate")
+        // 3. Call relay server
+        StoryGenerationResponseDto response = relayServerWebClient.post()
+            .uri("/ai/generate")
             .bodyValue(aiRequest)
             .retrieve()
             .bodyToMono(StoryGenerationResponseDto.class)
             .timeout(Duration.ofMinutes(10))  // Story generation can take time
             .onErrorResume(WebClientResponseException.class, e -> {
-                log.error("AI server error during generation: {} - {}",
+                log.error("Relay server error during generation: {} - {}",
                     e.getStatusCode(), e.getResponseBodyAsString());
-                return Mono.error(new RuntimeException("AI server error: " + e.getMessage()));
+                return Mono.error(new RuntimeException("Relay server error: " + e.getMessage()));
             })
             .block();
 
         if (response == null || !"success".equals(response.getStatus()) || response.getData() == null || response.getData().getMetadata() == null) {
-            String errorMsg = response != null ? response.getMessage() : "No response from AI server";
+            String errorMsg = response != null ? response.getMessage() : "No response from relay server";
             throw new RuntimeException("Story generation failed: " + errorMsg);
         }
 
@@ -124,15 +124,15 @@ public class StoryGenerationService {
 
     public boolean checkAiServerHealth() {
         try {
-            String response = aiServerWebClient.get()
-                .uri("/health")
+            String response = relayServerWebClient.get()
+                .uri("/ai/health")
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(5))
                 .block();
             return response != null;
         } catch (Exception e) {
-            log.warn("AI server health check failed: {}", e.getMessage());
+            log.warn("Relay server health check failed: {}", e.getMessage());
             return false;
         }
     }

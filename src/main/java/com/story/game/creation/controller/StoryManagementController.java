@@ -1,8 +1,9 @@
 package com.story.game.creation.controller;
 
+import com.story.game.common.dto.FullStoryDto;
 import com.story.game.creation.dto.*;
-import com.story.game.common.dto.*;
-import com.story.game.gameplay.dto.*;
+import com.story.game.creation.service.SequentialGenerationService;
+import com.story.game.creation.service.StoryEditingService;
 import com.story.game.creation.service.StoryManagementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.*;
 public class StoryManagementController {
 
     private final StoryManagementService storyManagementService;
+    private final StoryEditingService storyEditingService;
+    private final SequentialGenerationService sequentialGenerationService;
 
     /**
      * 1. 소설 업로드 및 분석 시작
@@ -143,43 +146,80 @@ public class StoryManagementController {
     }
 
     /**
-     * 7. 스토리 생성 시작
+     * 7. 스토리 생성 시작 (EP 1)
      */
     @PostMapping("/{storyId}/generate")
     @Operation(
-            summary = "스토리 생성 시작",
-            description = "AI 서버에 스토리 생성을 요청합니다. " +
-                    "백그라운드에서 생성이 진행되며, /progress 엔드포인트로 진행률을 확인할 수 있습니다."
+            summary = "스토리 생성 시작 (EP 1)",
+            description = "AI 서버에 스토리 생성을 요청합니다. 단계별 생성 방식에 따라, 이 엔드포인트는 에피소드 1의 생성을 시작합니다."
     )
-    public ResponseEntity<StoryGenerationStartResponseDto> startGeneration(
+    public ResponseEntity<TaskStartResponseDto> startGeneration(
             @PathVariable String storyId) {
-        log.info("=== Start Generation Request ===");
+        log.info("=== Start Generation Request (EP 1) ===");
         log.info("StoryId: {}", storyId);
 
-        StoryGenerationStartResponseDto response = storyManagementService.startGeneration(storyId);
+        TaskStartResponseDto response = sequentialGenerationService.startEpisodeGeneration(storyId);
 
-        log.info("Story generation started");
+        log.info("Story generation started for episode 1. TaskId: {}", response.getTaskId());
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 8. 생성 진행률 조회
+     * 다음 에피소드 생성 시작
+     */
+    @PostMapping("/{storyId}/generate-next-episode")
+    @Operation(
+            summary = "다음 에피소드 생성 시작",
+            description = "이전 에피소드에 이어 다음 에피소드의 생성을 시작합니다. 비동기로 처리되며 taskId가 반환됩니다."
+    )
+    public ResponseEntity<TaskStartResponseDto> generateNextEpisode(
+            @PathVariable String storyId) {
+        log.info("=== Generate Next Episode Request ===");
+        log.info("StoryId: {}", storyId);
+
+        TaskStartResponseDto response = sequentialGenerationService.generateNextEpisode(storyId);
+
+        log.info("Next episode generation started. TaskId: {}", response.getTaskId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 8a. 분석 진행률 조회
      */
     @GetMapping("/{storyId}/progress")
     @Operation(
-            summary = "생성 진행률 조회",
-            description = "스토리 생성 진행 상태를 조회합니다. " +
-                    "프론트엔드에서 3-5초마다 폴링하여 진행률을 확인합니다."
+            summary = "분석 진행률 조회",
+            description = "초기 소설 분석 단계의 진행 상태를 조회합니다."
     )
-    public ResponseEntity<StoryProgressResponseDto> getProgress(
+    public ResponseEntity<StoryProgressResponseDto> getAnalysisProgress(
             @PathVariable String storyId) {
-        log.debug("=== Get Progress Request ===");
+        log.debug("=== Get Analysis Progress Request ===");
         log.debug("StoryId: {}", storyId);
 
         StoryProgressResponseDto response = storyManagementService.getProgress(storyId);
 
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 8b. 단계별 생성 진행률 조회
+     */
+    @GetMapping("/generate/progress/{taskId}")
+    @Operation(
+            summary = "단계별 생성 진행률 조회",
+            description = "에피소드 생성 작업의 진행 상태를 taskId로 조회합니다."
+    )
+    public ResponseEntity<StoryProgressResponseDto> getGenerationProgress(
+            @PathVariable String taskId) {
+        log.debug("=== Get Generation Progress Request ===");
+        log.debug("Task ID: {}", taskId);
+
+        StoryProgressResponseDto response = sequentialGenerationService.getGenerationProgress(taskId);
+
+        return ResponseEntity.ok(response);
+    }
+
+
 
     /**
      * 9. 생성 완료 결과 조회
@@ -241,6 +281,54 @@ public class StoryManagementController {
         StoryUploadResponseDto response = storyManagementService.uploadNovelFromS3(request);
 
         log.info("Novel uploaded from S3. StoryId: {}", response.getStoryId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 노드 수정 및 하위 서브트리 재생성 (비동기)
+     */
+    @PutMapping("/{storyId}/episodes/{episodeOrder}/nodes/{nodeId}/regenerate")
+    @Operation(
+            summary = "노드 수정 및 서브트리 재생성 (비동기)",
+            description = "특정 노드의 내용을 수정하고, 그 아래의 모든 하위 노드들을 AI가 자동으로 재생성합니다. " +
+                    "비동기로 처리되며, 반환된 taskId로 진행률을 조회할 수 있습니다. " +
+                    "Top-Down 방식으로 상위 노드 수정 시 하위 노드들이 새로운 내용에 맞춰 재생성됩니다."
+    )
+    public ResponseEntity<TaskStartResponseDto> regenerateNodeSubtree(
+            @PathVariable String storyId,
+            @PathVariable Integer episodeOrder,
+            @PathVariable String nodeId,
+            @Valid @RequestBody UpdateNodeRequestDto request) {
+
+        log.info("=== Regenerate Node Subtree Request (Async) ===");
+        log.info("Story ID: {}, Episode: {}, Node: {}", storyId, episodeOrder, nodeId);
+
+        TaskStartResponseDto response = storyEditingService.startRegenerateSubtreeAsync(
+            storyId, episodeOrder, nodeId, request
+        );
+
+        log.info("Subtree regeneration started: taskId = {}", response.getTaskId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 재생성 진행률 조회
+     */
+    @GetMapping("/regenerate/progress/{taskId}")
+    @Operation(
+            summary = "재생성 진행률 조회",
+            description = "서브트리 재생성 작업의 진행 상태를 조회합니다. " +
+                    "프론트엔드에서 1-3초마다 폴링하여 진행률을 확인합니다. " +
+                    "status가 'completed'일 때 regeneratedNodes에 결과가 포함됩니다."
+    )
+    public ResponseEntity<RegenerateProgressDto> getRegenerateProgress(
+            @PathVariable String taskId) {
+
+        log.debug("=== Get Regenerate Progress Request ===");
+        log.debug("Task ID: {}", taskId);
+
+        RegenerateProgressDto response = storyEditingService.getRegenerateProgress(taskId);
+
         return ResponseEntity.ok(response);
     }
 }

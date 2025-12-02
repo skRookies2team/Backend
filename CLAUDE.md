@@ -8,128 +8,159 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build the project
 ./gradlew build
 
-# Clean build artifacts
-./gradlew clean
-
 # Run the application
 ./gradlew bootRun
 
 # Run tests
 ./gradlew test
-
-# Run a specific test class
-./gradlew test --tests ClassName
 ```
 
 ## Project Overview
 
-Interactive story game player backend built with Spring Boot 3.2 + JPA + MariaDB.
+Interactive story game platform backend built with **Spring Boot 3.2 + JPA + MariaDB**.
+
+Supports AI-powered interactive story generation, gameplay, user management, and community features.
 
 **Main entry point**: `src/main/java/com/story/game/StoryGameApplication.java`
 
+**Tech Stack**: Spring Boot 3.2, Java 17, MariaDB, JWT Auth, AWS S3, WebFlux (AI server integration)
+
 ## Architecture
 
+### Package Structure
 ```
 com.story.game/
-├── config/         # WebConfig (CORS)
-├── controller/     # REST API endpoints
-│   ├── StoryManagementController  # 스토리 생성 관리
-│   └── GameController            # 게임 플레이
-├── dto/            # Data transfer objects
-├── entity/         # JPA entities
-│   ├── StoryCreation             # 스토리 생성 진행 상태
-│   ├── StoryData                 # 완성된 스토리 데이터
-│   └── GameSession               # 게임 세션
-├── repository/     # Data access layer
-└── service/        # Business logic
-    ├── StoryManagementService    # 스토리 생성 관리
-    ├── StoryGenerationService    # AI 서버 연동 (레거시)
-    └── GameService               # 게임 로직
+├── achievement/      # Achievement system
+├── auth/            # Authentication & Authorization (JWT)
+├── common/          # Shared DTOs, entities, exceptions
+├── community/       # Posts, comments, reviews, likes
+├── creation/        # Story generation pipeline
+├── gameplay/        # Game play engine
+├── infrastructure/  # Config, S3 service
+└── user/           # User profile management
 ```
 
-### Core Flow
+### Layered Architecture
+- **Controller**: REST endpoints (`@RestController`)
+- **Service**: Business logic (`@Service`, `@Transactional`)
+- **Repository**: Data access (`extends JpaRepository`)
+- **Entity**: Database models (`@Entity`)
+- **DTO**: Data transfer objects
 
-#### 1. Story Generation Flow (새로운 세분화된 프로세스)
-1. 소설 업로드 → AI 분석 시작 (`StoryCreation` 생성, status: ANALYZING)
-2. 요약/캐릭터/게이지 추출 완료 (status: GAUGES_READY)
-3. 사용자가 게이지 2개 선택 (status: GAUGES_SELECTED)
-4. 생성 설정 입력 (에피소드 수, depth, 엔딩 타입) (status: CONFIGURED)
-5. 스토리 생성 시작 (status: GENERATING)
-6. AI 서버에서 스토리 생성 (progress 폴링)
-7. 생성 완료 → `StoryData` 저장 (status: COMPLETED)
+## Core Flow
 
-#### 2. Game Play Flow
-1. 플레이어가 스토리 선택 → GameSession 생성
-2. 선택하기 → 태그 누적, 다음 노드로 이동
-3. Leaf node 도달 → 에피소드 엔딩 평가, 게이지 변경
-4. 모든 에피소드 완료 → 최종 엔딩 평가
+### Story Generation Flow
+1. Novel upload → AI analysis (`StoryCreation` created, status: ANALYZING)
+2. Summary/characters/gauges extracted (status: GAUGES_READY)
+3. User selects 2 gauges (status: GAUGES_SELECTED)
+4. Configuration: episodes, depth, endings (status: CONFIGURED)
+5. Story generation via AI server (status: GENERATING, progress polling)
+6. Completion → `StoryData` saved to S3 (status: COMPLETED)
 
-### Key Components
+### Game Play Flow
+1. Player selects story → `GameSession` created
+2. Make choices → Tags accumulated, navigate to next node
+3. Reach leaf node → Episode ending evaluated, gauges updated
+4. All episodes completed → Final ending determined
 
-- **StoryCreation**: 스토리 생성 과정 추적 (분석 결과, 진행 상태, 설정 등)
-- **StoryData**: 완성된 스토리 JSON 저장
-- **GameSession**: 게임 세션 상태 (현재 노드, 게이지, 태그, 방문 노드)
-- **StoryManagementService**: 스토리 생성의 각 단계 관리
-- **GameService**: 게임 로직 (노드 탐색, 조건 평가, 엔딩 결정)
+## Key Components
+
+**Entities**:
+- `User`: User accounts with JWT authentication
+- `StoryCreation`: Tracks story generation lifecycle
+- `StoryData`: Completed story metadata (JSON stored in S3)
+- `GameSession`: Active game state (gauges, tags, current node)
+
+**Services**:
+- `StoryGenerationService`: AI server integration, manages creation pipeline
+- `GameService`: Core game logic (navigation, endings, condition evaluation)
+- `S3Service`: AWS S3 file upload/download
 
 ## REST API
 
-### Story Generation API (StoryManagementController)
-세분화된 스토리 생성 프로세스 - 자세한 문서: `STORY_GENERATION_API.md`
-
+### Story Generation (`/api/stories`)
 ```
-POST /api/stories/upload                  - 소설 직접 업로드 및 분석 시작
-POST /api/stories/upload-from-s3          - S3에서 소설 읽어서 분석 시작 🆕
-GET  /api/stories/{id}/summary            - 요약 조회
-GET  /api/stories/{id}/characters         - 캐릭터 조회
-GET  /api/stories/{id}/gauges             - 게이지 5개 제안 조회
-POST /api/stories/{id}/gauges/select      - 게이지 2개 선택
-POST /api/stories/{id}/config             - 생성 설정 (에피소드 수, depth, 엔딩 타입)
-POST /api/stories/{id}/generate           - 스토리 생성 시작
-GET  /api/stories/{id}/progress           - 생성 진행률 조회 (폴링용)
-GET  /api/stories/{id}/result             - 생성 완료 결과 조회 (preview)
-GET  /api/stories/{id}/data               - 전체 스토리 데이터 조회 (게임 구성용)
+POST /upload                  - Upload novel and start analysis
+POST /upload-from-s3          - Upload from S3 file
+GET  /{id}/summary            - Get summary
+GET  /{id}/characters         - Get characters
+GET  /{id}/gauges             - Get gauge suggestions
+POST /{id}/gauges/select      - Select 2 gauges
+POST /{id}/config             - Configure generation
+POST /{id}/generate           - Start generation
+GET  /{id}/progress           - Poll progress
+GET  /{id}/result             - Get result preview
+GET  /{id}/data               - Get full story data
 ```
 
-### File Upload API (UploadController) 🆕
-S3를 이용한 파일 업로드 API
-
+### Game Play (`/api/game`)
 ```
-GET  /api/upload/presigned-url            - Pre-signed URL 생성 (업로드용)
-GET  /api/upload/download-url             - Pre-signed URL 생성 (다운로드용)
+POST /start                   - Start game
+GET  /{sessionId}             - Get current state
+POST /{sessionId}/choice      - Make choice
+GET  /stories                 - List stories
+GET  /stories/{id}/data       - Get story data
 ```
 
-### Game Play API (GameController)
-게임 플레이 관련 API
-
+### Authentication (`/api/auth`)
 ```
-POST /api/game/start                      - 게임 시작 (body: {storyDataId})
-GET  /api/game/{sessionId}                - 현재 상태 조회
-POST /api/game/{sessionId}/choice         - 선택하기 (body: {choiceIndex})
-GET  /api/game/stories                    - 스토리 목록 조회
-GET  /api/game/stories/{id}/data          - 전체 스토리 데이터 조회 (storyDataId로) 🆕
-POST /api/game/stories                    - 스토리 JSON 업로드 (레거시)
-POST /api/game/stories/analyze            - 소설 분석 (레거시)
-POST /api/game/stories/generate           - 스토리 생성 (레거시)
-GET  /api/game/ai/health                  - AI 서버 상태 확인
+POST /signup                  - Register user
+POST /login                   - Login (returns JWT)
+POST /refresh                 - Refresh access token
 ```
 
 ## Configuration
 
-Database connection in `src/main/resources/application.yml`:
-- Default DB: `story_game` on localhost:3306
-- Set `DB_PASSWORD` env variable or update password in yml
-- Set `AI_SERVER_URL` env variable (default: http://localhost:8000)
+### Required Environment Variables
+```bash
+# Database
+DB_PASSWORD=your_password
 
-AWS S3 configuration (for file upload):
-- Set `AWS_S3_BUCKET` env variable (your S3 bucket name)
-- Set `AWS_S3_REGION` env variable (default: ap-northeast-2)
-- Set `AWS_ACCESS_KEY` env variable (AWS access key)
-- Set `AWS_SECRET_KEY` env variable (AWS secret key)
+# AI Server
+AI_SERVER_URL=http://localhost:8000
+
+# AWS S3
+AWS_S3_BUCKET=your-bucket-name
+AWS_S3_REGION=ap-northeast-2
+AWS_ACCESS_KEY=your-access-key
+AWS_SECRET_KEY=your-secret-key
+
+# JWT
+JWT_SECRET=your-secret-key-at-least-32-characters
+```
+
+See `docs/ENV_SETUP.md` for detailed environment setup.
+
+## Coding Conventions
+
+**Key Patterns**:
+- Constructor injection: `@RequiredArgsConstructor`
+- Builder pattern: `@Builder` for DTOs
+- Logging: `@Slf4j` with structured logging
+- Transactions: `@Transactional` on service methods
+- Validation: `@Valid` on request DTOs
+
+**Naming**:
+- Entities: `User`, `StoryCreation`, `GameSession`
+- DTOs: `LoginRequestDto`, `GameStateResponseDto`
+- Services: `AuthService`, `GameService`
+
+See `docs/CODING_CONVENTIONS.md` for detailed conventions.
 
 ## Python AI Integration
 
-This backend plays stories generated by the Python AI engine at:
-https://github.com/skRookies2team/AI/tree/feature/kwak
+Integrates with Python AI engine: https://github.com/skRookies2team/AI/tree/feature/kwak
 
-The JSON structure from Python maps to DTOs in `com.story.game.dto`.
+- Protocol: HTTP REST via WebFlux WebClient
+- Timeout: 10 minutes
+- Endpoints: `/analyze`, `/generate`, `/progress`
+
+## Related Documentation
+
+- **Architecture Details**: `docs/ARCHITECTURE.md` - Tech stack, package structure
+- **Coding Conventions**: `docs/CODING_CONVENTIONS.md` - Detailed coding standards
+- **Development Guide**: `docs/DEVELOPMENT_GUIDE.md` - Setup, tips, troubleshooting
+- **API Specification**: `docs/STORY_GENERATION_API.md` - Story creation API details
+- **Frontend Integration**: `docs/FRONTEND_INTEGRATION_GUIDE.md`
+- **Image Generation Flow**: `docs/IMAGE_GENERATION_FLOW.md`
+- **Environment Setup**: `docs/ENV_SETUP.md`

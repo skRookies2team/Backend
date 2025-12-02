@@ -23,6 +23,9 @@ public class GameStateResponseDto {
     private StoryNodeDto.StoryNodeDetailDto nodeDetails;
     private List<StoryChoiceDto> choices;
 
+    // Image URL for the current node
+    private String imageUrl;
+
     // Gauge info for display
     private List<GaugeDto> gaugeDefinitions;
 

@@ -24,6 +24,7 @@ public class StoryNodeDto {
 
     @JsonProperty("episode_id")
     private String episodeId;
+    private List<StoryNodeDto> children;
 
     @Data
     @NoArgsConstructor

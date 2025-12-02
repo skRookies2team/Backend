@@ -37,6 +37,7 @@ public class GameService {
     private final StoryDataRepository storyDataRepository;
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
+    private final com.story.game.ai.service.RelayServerClient relayServerClient;
 
     @Transactional
     public GameStateResponseDto startGame(Long storyDataId) {
@@ -72,7 +73,10 @@ public class GameService {
 
         session = gameSessionRepository.save(session);
 
-        return buildGameStateResponse(session, fullStory, firstEpisode, rootNode, true);
+        // Generate image for the first node
+        String imageUrl = generateNodeImage(rootNode, firstEpisode);
+
+        return buildGameStateResponse(session, fullStory, firstEpisode, rootNode, true, imageUrl);
     }
 
     @Transactional(readOnly = true)
@@ -88,7 +92,11 @@ public class GameService {
         StoryNodeDto currentNode = findNodeById(currentEpisode, session.getCurrentNodeId());
 
         boolean isFirstNode = session.getVisitedNodes().size() == 1;
-        return buildGameStateResponse(session, fullStory, currentEpisode, currentNode, isFirstNode);
+
+        // Generate image for the current node
+        String imageUrl = generateNodeImage(currentNode, currentEpisode);
+
+        return buildGameStateResponse(session, fullStory, currentEpisode, currentNode, isFirstNode, imageUrl);
     }
 
     @Transactional
@@ -130,7 +138,10 @@ public class GameService {
             session.getVisitedNodes().add(nextNode.getId());
             session = gameSessionRepository.save(session);
 
-            return buildGameStateResponse(session, fullStory, currentEpisode, nextNode, false);
+            // Generate image for the next node
+            String imageUrl = generateNodeImage(nextNode, currentEpisode);
+
+            return buildGameStateResponse(session, fullStory, currentEpisode, nextNode, false, imageUrl);
         } else {
             // Reached leaf node - evaluate episode ending
             return handleEpisodeEnd(session, fullStory, currentEpisode);
@@ -169,8 +180,11 @@ public class GameService {
             session.setAccumulatedTags(new HashMap<>()); // Reset tags for new episode
             session = gameSessionRepository.save(session);
 
+            // Generate image for the next episode's root node
+            String imageUrl = generateNodeImage(rootNode, nextEpisode);
+
             GameStateResponseDto response = buildGameStateResponse(session, fullStory, nextEpisode,
-                rootNode, true);
+                rootNode, true, imageUrl);
             response.setIsEpisodeEnd(true);
             response.setEpisodeEnding(matchedEnding);
             return response;
@@ -204,7 +218,7 @@ public class GameService {
     }
 
     private GameStateResponseDto buildGameStateResponse(GameSession session, FullStoryDto fullStory,
-        EpisodeDto episode, StoryNodeDto node, boolean showIntro) {
+        EpisodeDto episode, StoryNodeDto node, boolean showIntro, String imageUrl) {
         return GameStateResponseDto.builder()
             .sessionId(session.getId())
             .currentEpisodeId(session.getCurrentEpisodeId())
@@ -216,10 +230,34 @@ public class GameService {
             .nodeText(node.getText())
             .nodeDetails(node.getDetails())
             .choices(node.getChoices())
+            .imageUrl(imageUrl)
             .gaugeDefinitions(fullStory.getContext().getSelectedGauges())
             .isEpisodeEnd(false)
             .isGameEnd(false)
             .build();
+    }
+
+    /**
+     * Generate image for a story node via relay server
+     */
+    private String generateNodeImage(StoryNodeDto node, EpisodeDto episode) {
+        try {
+            com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
+                .nodeText(node.getText())
+                .situation(node.getDetails() != null ? node.getDetails().getSituation() : null)
+                .npcEmotions(node.getDetails() != null ? node.getDetails().getNpcEmotions() : null)
+                .episodeTitle(episode.getTitle())
+                .episodeOrder(episode.getOrder())
+                .nodeDepth(node.getDepth())
+                .build();
+
+            com.story.game.ai.dto.ImageGenerationResponseDto response = relayServerClient.generateImage(request);
+            return response.getImageUrl();
+        } catch (Exception e) {
+            log.error("Failed to generate image for node {}: {}", node.getId(), e.getMessage());
+            // Return null if image generation fails - game can continue without image
+            return null;
+        }
     }
 
     private FullStoryDto getFullStory(StoryData storyData) {

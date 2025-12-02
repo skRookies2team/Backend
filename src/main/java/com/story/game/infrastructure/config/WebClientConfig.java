@@ -24,6 +24,12 @@ public class WebClientConfig {
     @Value("${ai-server.timeout:600000}") // 10분 기본값
     private int timeout;
 
+    @Value("${relay-server.url:http://localhost:8081}")
+    private String relayServerUrl;
+
+    @Value("${relay-server.timeout:30000}") // 30초 기본값
+    private int relayTimeout;
+
     @Bean
     public WebClient aiServerWebClient() {
         HttpClient httpClient = HttpClient.create()
@@ -35,6 +41,22 @@ public class WebClientConfig {
 
         return WebClient.builder()
                 .baseUrl(aiServerUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build();
+    }
+
+    @Bean
+    public WebClient relayServerWebClient() {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, relayTimeout)
+                .responseTimeout(Duration.ofMillis(relayTimeout))
+                .doOnConnected(conn ->
+                        conn.addHandlerLast(new ReadTimeoutHandler(relayTimeout, TimeUnit.MILLISECONDS))
+                            .addHandlerLast(new WriteTimeoutHandler(relayTimeout, TimeUnit.MILLISECONDS)));
+
+        return WebClient.builder()
+                .baseUrl(relayServerUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
