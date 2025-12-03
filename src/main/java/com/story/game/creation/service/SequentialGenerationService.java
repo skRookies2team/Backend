@@ -170,7 +170,12 @@ public class SequentialGenerationService {
                     .description(storyCreation.getDescription())
                     .storyFileKey(storyCreation.getS3FileKey())
                     .totalEpisodes(finalStory.getEpisodes().size())
-                    .totalNodes(finalStory.getEpisodes().stream().mapToInt(ep -> countNodes(ep.getNodes().get(0))).sum())
+                    .totalNodes(finalStory.getEpisodes().stream().mapToInt(ep -> {
+                        if (ep.getNodes() == null || ep.getNodes().isEmpty()) {
+                            return 0;
+                        }
+                        return countNodes(ep.getNodes().get(0));
+                    }).sum())
                     .build();
                 storyDataRepository.save(storyData);
                 storyCreation.setStoryDataId(storyData.getId());

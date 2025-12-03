@@ -39,11 +39,8 @@ public class StoryEditingService {
 
     private final StoryCreationRepository storyCreationRepository;
     private final S3Service s3Service;
-    private final WebClient.Builder webClientBuilder;
+    private final WebClient relayServerWebClient;
     private final ObjectMapper objectMapper;
-
-    @Value("${relay-server.url}")
-    private String relayServerUrl;
 
     private final Map<String, RegenerateProgressDto> taskProgress = new ConcurrentHashMap<>();
 
@@ -101,16 +98,32 @@ public class StoryEditingService {
 
             updateProgress(taskId, "in_progress", "Replacing subtree and saving to S3...", 80, null);
 
-            // Since the structure is flat, we remove old descendants and add new ones.
-            // This is a complex operation. For now, we assume a simple 'children' replacement for compilation,
-            // but this logic needs to be rewritten based on the flat structure.
-            // For now, let's just clear old children and add new ones to get it to compile.
+            // Replace subtree: Support both flat and tree structures
+            EpisodeDto targetEpisode = fullStory.getEpisodes().stream()
+                    .filter(e -> e.getOrder().equals(episodeOrder))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Episode not found"));
+
+            // 1. Remove old child nodes from flat structure (episode.nodes)
+            if (parentNodeToRegenerate.getChildren() != null && !parentNodeToRegenerate.getChildren().isEmpty()) {
+                // Collect all descendant IDs to remove
+                List<String> descendantIds = collectAllDescendantIds(parentNodeToRegenerate.getChildren());
+                targetEpisode.getNodes().removeIf(node -> descendantIds.contains(node.getId()));
+                log.info("Removed {} old descendant nodes from episode.nodes", descendantIds.size());
+            }
+
+            // 2. Update tree structure (parent.children)
             if (parentNodeToRegenerate.getChildren() == null) {
                 parentNodeToRegenerate.setChildren(new ArrayList<>());
             }
             parentNodeToRegenerate.getChildren().clear();
-            if(regeneratedChildren != null) {
+            if (regeneratedChildren != null) {
                 parentNodeToRegenerate.getChildren().addAll(regeneratedChildren);
+
+                // 3. Add new nodes to flat structure (episode.nodes)
+                List<StoryNodeDto> allNewNodes = collectAllNodes(regeneratedChildren);
+                targetEpisode.getNodes().addAll(allNewNodes);
+                log.info("Added {} new nodes to episode.nodes", allNewNodes.size());
             }
             
             String updatedStoryJson = objectMapper.writeValueAsString(fullStory);
@@ -151,6 +164,9 @@ public class StoryEditingService {
     }
     
     private SubtreeRegenerationRequestDto buildAiRequest(StoryCreation storyCreation, FullStoryDto fullStory, StoryNodeDto parentNode, int episodeOrder) throws IOException {
+        if (episodeOrder < 1 || episodeOrder > fullStory.getEpisodes().size()) {
+            throw new IllegalArgumentException("Invalid episode order: " + episodeOrder + ". Must be between 1 and " + fullStory.getEpisodes().size());
+        }
         EpisodeDto episode = fullStory.getEpisodes().get(episodeOrder - 1);
         
         List<String> choiceTexts = parentNode.getChoices().stream()
@@ -182,9 +198,7 @@ public class StoryEditingService {
     }
 
     private Mono<List<StoryNodeDto>> callAiRegenerationApi(SubtreeRegenerationRequestDto aiRequest) {
-        WebClient webClient = webClientBuilder.baseUrl(relayServerUrl).build();
-        
-        return webClient.post()
+        return relayServerWebClient.post()
                 .uri("/ai/regenerate-subtree")
                 .bodyValue(aiRequest)
                 .retrieve()
@@ -202,5 +216,39 @@ public class StoryEditingService {
                 .regeneratedNodes(nodes)
                 .build();
         taskProgress.put(taskId, progressDto);
+    }
+
+    /**
+     * Recursively collect all descendant node IDs from a list of nodes
+     */
+    private List<String> collectAllDescendantIds(List<StoryNodeDto> nodes) {
+        List<String> ids = new ArrayList<>();
+        if (nodes == null) {
+            return ids;
+        }
+        for (StoryNodeDto node : nodes) {
+            ids.add(node.getId());
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                ids.addAll(collectAllDescendantIds(node.getChildren()));
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Recursively collect all nodes (including descendants) from a list of root nodes
+     */
+    private List<StoryNodeDto> collectAllNodes(List<StoryNodeDto> nodes) {
+        List<StoryNodeDto> allNodes = new ArrayList<>();
+        if (nodes == null) {
+            return allNodes;
+        }
+        for (StoryNodeDto node : nodes) {
+            allNodes.add(node);
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                allNodes.addAll(collectAllNodes(node.getChildren()));
+            }
+        }
+        return allNodes;
     }
 }

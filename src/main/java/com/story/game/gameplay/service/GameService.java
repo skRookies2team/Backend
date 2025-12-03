@@ -48,8 +48,10 @@ public class GameService {
 
         // Initialize gauge states with default values (50)
         Map<String, Integer> initialGauges = new HashMap<>();
-        for (GaugeDto gauge : fullStory.getContext().getSelectedGauges()) {
-            initialGauges.put(gauge.getId(), 50);
+        if (fullStory.getContext() != null && fullStory.getContext().getSelectedGauges() != null) {
+            for (GaugeDto gauge : fullStory.getContext().getSelectedGauges()) {
+                initialGauges.put(gauge.getId(), 50);
+            }
         }
 
         // Get first episode
@@ -274,8 +276,11 @@ public class GameService {
     }
 
     private StoryNodeDto findRootNode(EpisodeDto episode) {
+        if (episode.getNodes() == null || episode.getNodes().isEmpty()) {
+            throw new RuntimeException("No nodes found in episode: " + episode.getId());
+        }
         return episode.getNodes().stream()
-            .filter(node -> node.getDepth() == 0)
+            .filter(node -> node.getDepth() != null && node.getDepth() == 0)
             .findFirst()
             .orElseThrow(
                 () -> new RuntimeException("Root node not found in episode: " + episode.getId()));
@@ -289,6 +294,9 @@ public class GameService {
     }
 
     private StoryNodeDto findNodeById(EpisodeDto episode, String nodeId) {
+        if (episode.getNodes() == null || episode.getNodes().isEmpty()) {
+            throw new RuntimeException("No nodes found in episode: " + episode.getId());
+        }
         return episode.getNodes().stream()
             .filter(node -> node.getId().equals(nodeId))
             .findFirst()
@@ -296,9 +304,14 @@ public class GameService {
     }
 
     private StoryNodeDto findNextNode(EpisodeDto episode, String parentId, int choiceIndex) {
-        // Find child nodes with matching parent_id
+        if (episode.getNodes() == null) {
+            return null;
+        }
+
+        // Find child nodes with matching parent_id and sort by ID for consistency
         List<StoryNodeDto> children = episode.getNodes().stream()
             .filter(node -> parentId.equals(node.getParentId()))
+            .sorted(Comparator.comparing(StoryNodeDto::getId))
             .collect(Collectors.toList());
 
         if (children.isEmpty()) {
@@ -306,10 +319,12 @@ public class GameService {
         }
 
         // Return the child corresponding to the choice index
-        if (choiceIndex < children.size()) {
+        if (choiceIndex >= 0 && choiceIndex < children.size()) {
             return children.get(choiceIndex);
         }
 
+        log.warn("Invalid choice index {} for parent {} (total children: {}). Using first child.",
+                 choiceIndex, parentId, children.size());
         return children.get(0); // Fallback to first child
     }
 
