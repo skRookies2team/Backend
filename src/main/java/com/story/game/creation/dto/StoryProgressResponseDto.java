@@ -1,7 +1,10 @@
 package com.story.game.creation.dto;
 
+import com.story.game.common.dto.EpisodeDto;
 import com.story.game.creation.entity.StoryCreation;
 import lombok.*;
+
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -12,6 +15,7 @@ public class StoryProgressResponseDto {
     private String storyId;
     private StoryCreation.CreationStatus status;
     private ProgressData progress;
+    private List<EpisodeDto> episodes;  // 생성된 에피소드 목록
 
     @Data
     @NoArgsConstructor

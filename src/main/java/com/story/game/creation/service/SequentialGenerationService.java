@@ -13,6 +13,10 @@ import com.story.game.creation.dto.TaskStartResponseDto;
 import com.story.game.creation.entity.StoryCreation;
 import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.story.entity.Episode;
+import com.story.game.story.mapper.StoryMapper;
+import com.story.game.story.repository.EpisodeRepository;
+import com.story.game.story.repository.StoryNodeRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
@@ -29,17 +33,42 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class SequentialGenerationService {
 
     private final StoryCreationRepository storyCreationRepository;
     private final StoryDataRepository storyDataRepository;
+    private final EpisodeRepository episodeRepository;
+    private final StoryNodeRepository storyNodeRepository;
     private final WebClient aiServerWebClient;
     private final ObjectMapper objectMapper;
+    private final StoryMapper storyMapper;
     private final S3Service s3Service;
+    private final SequentialGenerationService self;
+
+    public SequentialGenerationService(
+            StoryCreationRepository storyCreationRepository,
+            StoryDataRepository storyDataRepository,
+            EpisodeRepository episodeRepository,
+            StoryNodeRepository storyNodeRepository,
+            WebClient aiServerWebClient,
+            ObjectMapper objectMapper,
+            StoryMapper storyMapper,
+            S3Service s3Service,
+            @org.springframework.context.annotation.Lazy SequentialGenerationService self) {
+        this.storyCreationRepository = storyCreationRepository;
+        this.storyDataRepository = storyDataRepository;
+        this.episodeRepository = episodeRepository;
+        this.storyNodeRepository = storyNodeRepository;
+        this.aiServerWebClient = aiServerWebClient;
+        this.objectMapper = objectMapper;
+        this.storyMapper = storyMapper;
+        this.s3Service = s3Service;
+        this.self = self;
+    }
 
     private final Map<String, StoryProgressResponseDto> generationTasks = new ConcurrentHashMap<>();
 
@@ -54,9 +83,8 @@ public class SequentialGenerationService {
     }
 
     @Transactional
-    public TaskStartResponseDto startEpisodeGeneration(String storyId) {
+    public EpisodeDto startEpisodeGeneration(String storyId) {
         log.info("=== Start Sequential Episode Generation (EP 1) for storyId: {} ===", storyId);
-        final String taskId = UUID.randomUUID().toString();
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                 .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
@@ -69,17 +97,16 @@ public class SequentialGenerationService {
         storyCreation.setTotalEpisodesToGenerate(storyCreation.getNumEpisodes());
         storyCreationRepository.save(storyCreation);
 
-        updateProgress(taskId, storyId, StoryCreation.CreationStatus.GENERATING, "Generation task for Episode 1 has been queued.", 0, 0, storyCreation.getNumEpisodes(), null);
+        log.info("🔥 Calling runEpisodeGenerationTaskSync for Episode 1");
+        EpisodeDto generatedEpisode = runEpisodeGenerationTaskSync(storyId, 1, null);
+        log.info("✅ Episode 1 generation completed");
 
-        runEpisodeGenerationTask(taskId, storyId, 1, null);
-
-        return new TaskStartResponseDto(taskId);
+        return generatedEpisode;
     }
 
     @Transactional
-    public TaskStartResponseDto generateNextEpisode(String storyId) {
+    public EpisodeDto generateNextEpisode(String storyId) {
         log.info("=== Generate Next Episode for storyId: {} ===", storyId);
-        final String taskId = UUID.randomUUID().toString();
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                 .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
@@ -89,70 +116,60 @@ public class SequentialGenerationService {
         if (completedEpisodes >= totalEpisodes) {
             throw new IllegalStateException("All episodes have already been generated.");
         }
-        if (storyCreation.getS3FileKey() == null || storyCreation.getS3FileKey().isBlank()) {
-            throw new IllegalStateException("Cannot generate next episode, initial story file does not exist.");
-        }
 
         int nextEpisodeOrder = completedEpisodes + 1;
 
-        updateProgress(taskId, storyId, StoryCreation.CreationStatus.GENERATING, "Task for Episode " + nextEpisodeOrder + " queued.", 0, completedEpisodes, totalEpisodes, null);
+        Episode previousEpisodeEntity = episodeRepository.findByStoryAndOrder(storyCreation, completedEpisodes)
+                .orElseThrow(() -> new IllegalStateException("Previous episode (order: " + completedEpisodes + ") not found in database."));
 
-        try {
-            String storyJson = s3Service.downloadFileContent(storyCreation.getS3FileKey());
-            FullStoryDto partialStory = objectMapper.readValue(storyJson, FullStoryDto.class);
-            
-            EpisodeDto previousEpisode = partialStory.getEpisodes().stream()
-                    .filter(e -> e.getOrder().equals(completedEpisodes))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("Previous episode not found in S3 file."));
+        EpisodeDto previousEpisodeDto = storyMapper.toEpisodeDto(previousEpisodeEntity);
 
-            runEpisodeGenerationTask(taskId, storyId, nextEpisodeOrder, previousEpisode);
-        } catch (Exception e) {
-            log.error("Failed to prepare for next episode generation", e);
-            throw new RuntimeException("Failed to load previous episode data.", e);
-        }
+        log.info("🔥 Calling runEpisodeGenerationTaskSync for Episode {}", nextEpisodeOrder);
+        EpisodeDto generatedEpisode = runEpisodeGenerationTaskSync(storyId, nextEpisodeOrder, previousEpisodeDto);
+        log.info("✅ Episode {} generation completed", nextEpisodeOrder);
 
-        return new TaskStartResponseDto(taskId);
+        return generatedEpisode;
     }
 
-    @Async
     @Transactional
-    public void runEpisodeGenerationTask(String taskId, String storyId, int episodeOrder, EpisodeDto previousEpisode) {
+    public EpisodeDto runEpisodeGenerationTaskSync(String storyId, int episodeOrder, EpisodeDto previousEpisode) {
+        log.info("🚀 [SYNC] runEpisodeGenerationTaskSync STARTED - storyId: {}, episodeOrder: {}", storyId, episodeOrder);
         StoryCreation storyCreation = null;
         try {
             storyCreation = storyCreationRepository.findById(storyId)
                     .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
             int totalEpisodes = storyCreation.getTotalEpisodesToGenerate();
-            updateProgress(taskId, storyId, StoryCreation.CreationStatus.GENERATING, "Calling AI for Episode " + episodeOrder + "...", 10, episodeOrder - 1, totalEpisodes, null);
+            log.info("📊 Total episodes to generate: {}", totalEpisodes);
 
             GenerateNextEpisodeRequest aiRequest = prepareAiRequest(storyCreation, episodeOrder, previousEpisode);
 
-            EpisodeDto newEpisode = aiServerWebClient.post()
+            log.info("=== AI Request for Episode {} ===", episodeOrder);
+            log.info("📤 Sending AI request to: /generate-next-episode");
+            log.info("📦 Request payload - episodeOrder: {}, has previousEpisode: {}", episodeOrder, previousEpisode != null);
+
+            EpisodeDto newEpisodeDto = aiServerWebClient.post()
                     .uri("/generate-next-episode")
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(EpisodeDto.class)
                     .block();
 
-            if (newEpisode == null) {
+            if (newEpisodeDto == null) {
                 throw new RuntimeException("AI server returned no data for the new episode.");
             }
-            updateProgress(taskId, storyId, StoryCreation.CreationStatus.GENERATING, "AI completed Episode " + episodeOrder + ". Saving...", 70, episodeOrder - 1, totalEpisodes, null);
+            log.info("✅ AI Response received - Episode title: {}", newEpisodeDto.getTitle());
 
-            if (episodeOrder == 1) {
-                FullStoryDto fullStory = new FullStoryDto();
-                fullStory.setEpisodes(new ArrayList<>(List.of(newEpisode)));
-                String storyFileKey = "stories/" + storyId + ".json";
-                s3Service.uploadFile(storyFileKey, objectMapper.writeValueAsString(fullStory));
-                storyCreation.setS3FileKey(storyFileKey);
-            } else {
-                String storyJson = s3Service.downloadFileContent(storyCreation.getS3FileKey());
-                FullStoryDto fullStory = objectMapper.readValue(storyJson, FullStoryDto.class);
-                fullStory.getEpisodes().add(newEpisode);
-                s3Service.uploadFile(storyCreation.getS3FileKey(), objectMapper.writeValueAsString(fullStory));
-            }
+            // 1. Save the new episode to the database
+            storyMapper.saveEpisodeDtoToDb(newEpisodeDto, storyCreation);
 
+            // 2. Create a JSON snapshot and upload to S3
+            FullStoryDto fullStoryForS3 = storyMapper.buildFullStoryDtoFromDb(storyCreation);
+            String storyFileKey = "stories/" + storyId + ".json";
+            s3Service.uploadFile(storyFileKey, objectMapper.writeValueAsString(fullStoryForS3));
+            storyCreation.setS3FileKey(storyFileKey);
+
+            // 3. Update progress
             storyCreation.setCompletedEpisodes(episodeOrder);
             int overallProgress = (int) (((double) episodeOrder / totalEpisodes) * 100);
             storyCreation.setProgressPercentage(overallProgress);
@@ -162,31 +179,24 @@ public class SequentialGenerationService {
                 storyCreation.setCompletedAt(LocalDateTime.now());
                 storyCreation.setCurrentPhase("COMPLETED");
 
-                String finalStoryJson = s3Service.downloadFileContent(storyCreation.getS3FileKey());
-                FullStoryDto finalStory = objectMapper.readValue(finalStoryJson, FullStoryDto.class);
-                
+                // Create the final StoryData entity for gameplay
                 StoryData storyData = StoryData.builder()
                     .title(storyCreation.getTitle())
                     .description(storyCreation.getDescription())
                     .storyFileKey(storyCreation.getS3FileKey())
-                    .totalEpisodes(finalStory.getEpisodes().size())
-                    .totalNodes(finalStory.getEpisodes().stream().mapToInt(ep -> {
-                        if (ep.getNodes() == null || ep.getNodes().isEmpty()) {
-                            return 0;
-                        }
-                        return countNodes(ep.getNodes().get(0));
-                    }).sum())
+                    .totalEpisodes(episodeRepository.findByStoryAndOrder(storyCreation, totalEpisodes).map(e -> e.getOrder()).orElse(0))
+                    .totalNodes((int) storyNodeRepository.countByEpisode_Story(storyCreation))
                     .build();
                 storyDataRepository.save(storyData);
                 storyCreation.setStoryDataId(storyData.getId());
-
-                updateProgress(taskId, storyId, StoryCreation.CreationStatus.COMPLETED, "All episodes generated successfully.", 100, totalEpisodes, totalEpisodes, null);
             } else {
-                storyCreation.setStatus(StoryCreation.CreationStatus.GENERATING);
-                storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE");
-                 updateProgress(taskId, storyId, StoryCreation.CreationStatus.GENERATING, "Episode " + episodeOrder + " completed. Ready for next.", 100, episodeOrder, totalEpisodes, null);
+                storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
+                storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");
             }
             storyCreationRepository.save(storyCreation);
+
+            return newEpisodeDto;
+
         } catch (Exception e) {
             log.error("Episode generation task failed for storyId: {}", storyId, e);
             if (storyCreation != null) {
@@ -194,23 +204,10 @@ public class SequentialGenerationService {
                 storyCreation.setErrorMessage(e.getMessage());
                 storyCreationRepository.save(storyCreation);
             }
-             updateProgress(taskId, storyId, StoryCreation.CreationStatus.FAILED, e.getMessage(), 0,
-                    storyCreation != null ? storyCreation.getCompletedEpisodes() : 0, 
-                    storyCreation != null ? storyCreation.getTotalEpisodesToGenerate() : 0, 
-                    e.getMessage());
+            throw new RuntimeException("Episode generation failed: " + e.getMessage(), e);
         }
     }
 
-    private int countNodes(StoryNodeDto node) {
-        if (node == null) return 0;
-        int count = 1;
-        if (node.getChildren() != null) {
-            for(StoryNodeDto child : node.getChildren()) {
-                count += countNodes(child);
-            }
-        }
-        return count;
-    }
 
     @Builder
     private static class GenerateNextEpisodeRequest {
@@ -261,7 +258,36 @@ public class SequentialGenerationService {
                 .build();
     }
 
+    public boolean checkAiServerHealth() {
+        try {
+            String response = aiServerWebClient.get()
+                .uri("/health") // Assuming AI server has a /health endpoint
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+            return response != null;
+        } catch (Exception e) {
+            log.warn("AI server health check failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
     private void updateProgress(String taskId, String storyId, StoryCreation.CreationStatus status, String message, int percentage, int completedEp, int totalEp, String error) {
+        // 현재까지 생성된 에피소드 목록 조회
+        List<EpisodeDto> episodes = new ArrayList<>();
+        try {
+            StoryCreation storyCreation = storyCreationRepository.findById(storyId).orElse(null);
+            if (storyCreation != null) {
+                List<Episode> episodeEntities = episodeRepository.findAllByStoryOrderByOrderAsc(storyCreation);
+                episodes = episodeEntities.stream()
+                        .map(storyMapper::toEpisodeDto)
+                        .collect(Collectors.toList());
+                log.info("📦 Progress update - found {} episodes for storyId: {}", episodes.size(), storyId);
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to fetch episodes for progress update: {}", e.getMessage());
+        }
+
         StoryProgressResponseDto.ProgressData progressData = StoryProgressResponseDto.ProgressData.builder()
                 .currentPhase(status.toString())
                 .completedEpisodes(completedEp)
@@ -274,6 +300,7 @@ public class SequentialGenerationService {
                 .storyId(storyId)
                 .status(status)
                 .progress(progressData)
+                .episodes(episodes)  // 생성된 에피소드 목록 포함
                 .build();
         generationTasks.put(taskId, progressDto);
     }

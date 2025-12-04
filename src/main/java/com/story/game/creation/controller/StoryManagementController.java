@@ -1,6 +1,8 @@
 package com.story.game.creation.controller;
 
+import com.story.game.common.dto.EpisodeDto;
 import com.story.game.common.dto.FullStoryDto;
+import com.story.game.common.dto.StoryNodeDto;
 import com.story.game.creation.dto.*;
 import com.story.game.creation.service.SequentialGenerationService;
 import com.story.game.creation.service.StoryEditingService;
@@ -12,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Slf4j
 @RestController
@@ -146,40 +150,40 @@ public class StoryManagementController {
     }
 
     /**
-     * 7. 스토리 생성 시작 (EP 1)
+     * 7. 스토리 생성 시작 (EP 1) - 동기 방식
      */
     @PostMapping("/{storyId}/generate")
     @Operation(
-            summary = "스토리 생성 시작 (EP 1)",
-            description = "AI 서버에 스토리 생성을 요청합니다. 단계별 생성 방식에 따라, 이 엔드포인트는 에피소드 1의 생성을 시작합니다."
+            summary = "스토리 생성 시작 (EP 1) - 동기 방식",
+            description = "AI 서버에 에피소드 1 생성을 요청하고, 완료될 때까지 대기한 후 생성된 에피소드 데이터를 반환합니다."
     )
-    public ResponseEntity<TaskStartResponseDto> startGeneration(
+    public ResponseEntity<EpisodeDto> startGeneration(
             @PathVariable String storyId) {
-        log.info("=== Start Generation Request (EP 1) ===");
+        log.info("=== Start Generation Request (EP 1) - Synchronous ===");
         log.info("StoryId: {}", storyId);
 
-        TaskStartResponseDto response = sequentialGenerationService.startEpisodeGeneration(storyId);
+        EpisodeDto response = sequentialGenerationService.startEpisodeGeneration(storyId);
 
-        log.info("Story generation started for episode 1. TaskId: {}", response.getTaskId());
+        log.info("Story generation completed for episode 1. Title: {}", response.getTitle());
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 다음 에피소드 생성 시작
+     * 다음 에피소드 생성 시작 - 동기 방식
      */
     @PostMapping("/{storyId}/generate-next-episode")
     @Operation(
-            summary = "다음 에피소드 생성 시작",
-            description = "이전 에피소드에 이어 다음 에피소드의 생성을 시작합니다. 비동기로 처리되며 taskId가 반환됩니다."
+            summary = "다음 에피소드 생성 시작 - 동기 방식",
+            description = "이전 에피소드에 이어 다음 에피소드의 생성을 시작하고, 완료될 때까지 대기한 후 생성된 에피소드 데이터를 반환합니다."
     )
-    public ResponseEntity<TaskStartResponseDto> generateNextEpisode(
+    public ResponseEntity<EpisodeDto> generateNextEpisode(
             @PathVariable String storyId) {
-        log.info("=== Generate Next Episode Request ===");
+        log.info("=== Generate Next Episode Request - Synchronous ===");
         log.info("StoryId: {}", storyId);
 
-        TaskStartResponseDto response = sequentialGenerationService.generateNextEpisode(storyId);
+        EpisodeDto response = sequentialGenerationService.generateNextEpisode(storyId);
 
-        log.info("Next episode generation started. TaskId: {}", response.getTaskId());
+        log.info("Next episode generation completed. Title: {}", response.getTitle());
         return ResponseEntity.ok(response);
     }
 
@@ -200,26 +204,6 @@ public class StoryManagementController {
 
         return ResponseEntity.ok(response);
     }
-
-    /**
-     * 8b. 단계별 생성 진행률 조회
-     */
-    @GetMapping("/generate/progress/{taskId}")
-    @Operation(
-            summary = "단계별 생성 진행률 조회",
-            description = "에피소드 생성 작업의 진행 상태를 taskId로 조회합니다."
-    )
-    public ResponseEntity<StoryProgressResponseDto> getGenerationProgress(
-            @PathVariable String taskId) {
-        log.debug("=== Get Generation Progress Request ===");
-        log.debug("Task ID: {}", taskId);
-
-        StoryProgressResponseDto response = sequentialGenerationService.getGenerationProgress(taskId);
-
-        return ResponseEntity.ok(response);
-    }
-
-
 
     /**
      * 9. 생성 완료 결과 조회
@@ -285,50 +269,37 @@ public class StoryManagementController {
     }
 
     /**
-     * 노드 수정 및 하위 서브트리 재생성 (비동기)
+     * 노드 수정 및 하위 서브트리 재생성 (동기)
      */
     @PutMapping("/{storyId}/episodes/{episodeOrder}/nodes/{nodeId}/regenerate")
     @Operation(
-            summary = "노드 수정 및 서브트리 재생성 (비동기)",
+            summary = "노드 수정 및 서브트리 재생성 (동기)",
             description = "특정 노드의 내용을 수정하고, 그 아래의 모든 하위 노드들을 AI가 자동으로 재생성합니다. " +
-                    "비동기로 처리되며, 반환된 taskId로 진행률을 조회할 수 있습니다. " +
+                    "동기 방식으로 처리되며, 완료될 때까지 대기한 후 재생성된 노드 목록을 반환합니다. " +
                     "Top-Down 방식으로 상위 노드 수정 시 하위 노드들이 새로운 내용에 맞춰 재생성됩니다."
     )
-    public ResponseEntity<TaskStartResponseDto> regenerateNodeSubtree(
+    public ResponseEntity<RegenerateSubtreeResponseDto> regenerateNodeSubtree(
             @PathVariable String storyId,
             @PathVariable Integer episodeOrder,
             @PathVariable String nodeId,
             @Valid @RequestBody UpdateNodeRequestDto request) {
 
-        log.info("=== Regenerate Node Subtree Request (Async) ===");
+        log.info("=== Regenerate Node Subtree Request (Sync) ===");
         log.info("Story ID: {}, Episode: {}, Node: {}", storyId, episodeOrder, nodeId);
 
-        TaskStartResponseDto response = storyEditingService.startRegenerateSubtreeAsync(
-            storyId, episodeOrder, nodeId, request
+        List<StoryNodeDto> regeneratedNodes = storyEditingService.regenerateSubtreeSync(
+            storyId, nodeId, request
         );
 
-        log.info("Subtree regeneration started: taskId = {}", response.getTaskId());
-        return ResponseEntity.ok(response);
-    }
+        int totalNodes = regeneratedNodes != null ? regeneratedNodes.size() : 0;
+        RegenerateSubtreeResponseDto response = RegenerateSubtreeResponseDto.builder()
+                .status("success")
+                .message("Subtree regenerated successfully")
+                .regeneratedNodes(regeneratedNodes)
+                .totalNodesRegenerated(totalNodes)
+                .build();
 
-    /**
-     * 재생성 진행률 조회
-     */
-    @GetMapping("/regenerate/progress/{taskId}")
-    @Operation(
-            summary = "재생성 진행률 조회",
-            description = "서브트리 재생성 작업의 진행 상태를 조회합니다. " +
-                    "프론트엔드에서 1-3초마다 폴링하여 진행률을 확인합니다. " +
-                    "status가 'completed'일 때 regeneratedNodes에 결과가 포함됩니다."
-    )
-    public ResponseEntity<RegenerateProgressDto> getRegenerateProgress(
-            @PathVariable String taskId) {
-
-        log.debug("=== Get Regenerate Progress Request ===");
-        log.debug("Task ID: {}", taskId);
-
-        RegenerateProgressDto response = storyEditingService.getRegenerateProgress(taskId);
-
+        log.info("Subtree regeneration completed: {} nodes regenerated", totalNodes);
         return ResponseEntity.ok(response);
     }
 }

@@ -34,7 +34,7 @@ public class StoryCreation {
     private String analysisResultFileKey;  // S3에 저장된 분석 결과 파일의 키 (선택사항)
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 30)
     @Builder.Default
     private CreationStatus status = CreationStatus.ANALYZING;
 
@@ -117,6 +117,7 @@ public class StoryCreation {
         GAUGES_SELECTED,     // 게이지 선택 완료
         CONFIGURED,          // 설정 완료
         GENERATING,          // 스토리 생성 중
+        AWAITING_USER_ACTION, // 사용자 액션 대기 중 (에피소드 생성 후)
         COMPLETED,           // 생성 완료
         FAILED               // 생성 실패
     }

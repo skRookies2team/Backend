@@ -82,6 +82,12 @@ bootRun {
     // envVars.each { key, value ->
     //     environment key, value
     // }
+
+    // JVM 메모리 설정 (메모리 부족 에러 방지)
+    jvmArgs = [
+        '-Xms256m',  // 초기 힙 메모리
+        '-Xmx512m'   // 최대 힙 메모리
+    ]
 }
 
 test {

@@ -320,6 +320,10 @@ public class StoryManagementService {
             storyCreation.setProgressPercentage(50);
             storyCreation.setProgressMessage("Story configured");
 
+            // 순차 생성을 위한 초기화
+            storyCreation.setCompletedEpisodes(0);
+            storyCreation.setTotalEpisodesToGenerate(request.getNumEpisodes());
+
             storyCreation = storyCreationRepository.save(storyCreation);
 
             return StoryConfigResponseDto.builder()

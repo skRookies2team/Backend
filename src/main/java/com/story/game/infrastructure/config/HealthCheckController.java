@@ -2,7 +2,7 @@ package com.story.game.infrastructure.config;
 
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.common.repository.StoryDataRepository;
-import com.story.game.creation.service.StoryGenerationService;
+import com.story.game.creation.service.SequentialGenerationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class HealthCheckController {
     private final DataSource dataSource;
     private final StoryDataRepository storyDataRepository;
     private final GameSessionRepository gameSessionRepository;
-    private final StoryGenerationService storyGenerationService;
+    private final SequentialGenerationService sequentialGenerationService;
 
     @GetMapping
     @Operation(summary = "전체 시스템 상태 확인", description = "서버, 데이터베이스, AI 서버의 연결 상태를 확인합니다")
@@ -42,7 +42,7 @@ public class HealthCheckController {
         status.put("database", dbConnected ? "UP" : "DOWN");
 
         // AI 서버 연결 확인
-        boolean aiConnected = storyGenerationService.checkAiServerHealth();
+        boolean aiConnected = sequentialGenerationService.checkAiServerHealth();
         status.put("aiServer", aiConnected ? "UP" : "DOWN");
 
         // 전체 상태
@@ -86,7 +86,7 @@ public class HealthCheckController {
     public ResponseEntity<Map<String, Object>> aiServerStatus() {
         Map<String, Object> aiStatus = new HashMap<>();
 
-        boolean isHealthy = storyGenerationService.checkAiServerHealth();
+        boolean isHealthy = sequentialGenerationService.checkAiServerHealth();
         aiStatus.put("connected", isHealthy);
         aiStatus.put("status", isHealthy ? "UP" : "DOWN");
 
