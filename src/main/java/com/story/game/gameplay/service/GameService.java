@@ -1,24 +1,36 @@
 package com.story.game.gameplay.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.story.game.common.dto.EpisodeDto;
-import com.story.game.common.dto.EpisodeEndingDto;
 import com.story.game.common.dto.FinalEndingDto;
 import com.story.game.common.dto.FullStoryDto;
 import com.story.game.common.dto.GaugeDto;
 import com.story.game.common.dto.StoryChoiceDto;
+import com.story.game.common.dto.EpisodeDto;
 import com.story.game.common.dto.StoryNodeDto;
 import com.story.game.common.entity.StoryData;
 import com.story.game.common.repository.StoryDataRepository;
+import com.story.game.creation.entity.StoryCreation;
+import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.gameplay.dto.GameStateResponseDto;
 import com.story.game.gameplay.entity.GameSession;
 import com.story.game.gameplay.repository.GameSessionRepository;
-import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.story.entity.Episode;
+import com.story.game.story.entity.EpisodeEnding;
+import com.story.game.story.entity.StoryChoice;
+import com.story.game.story.entity.StoryNode;
+import com.story.game.story.mapper.StoryMapper;
+import com.story.game.story.repository.EpisodeEndingRepository;
+import com.story.game.story.repository.EpisodeRepository;
+import com.story.game.story.repository.StoryChoiceRepository;
+import com.story.game.story.repository.StoryNodeRepository;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.script.ScriptEngine;
@@ -36,212 +48,282 @@ public class GameService {
     private final GameSessionRepository gameSessionRepository;
     private final StoryDataRepository storyDataRepository;
     private final ObjectMapper objectMapper;
-    private final S3Service s3Service;
     private final com.story.game.ai.service.RelayServerClient relayServerClient;
+    private final EpisodeRepository episodeRepository;
+    private final StoryNodeRepository storyNodeRepository;
+    private final StoryChoiceRepository storyChoiceRepository;
+    private final StoryCreationRepository storyCreationRepository;
+    private final EpisodeEndingRepository episodeEndingRepository;
+    private final StoryMapper storyMapper;
 
     @Transactional
-    public GameStateResponseDto startGame(Long storyDataId) {
+    public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
         StoryData storyData = storyDataRepository.findById(storyDataId)
             .orElseThrow(() -> new RuntimeException("Story not found: " + storyDataId));
+        StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
+            .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryData: " + storyData.getId()));
 
-        FullStoryDto fullStory = getFullStory(storyData);
+        Episode firstEpisode = episodeRepository.findByStoryAndOrder(storyCreation, 1)
+            .orElseThrow(() -> new RuntimeException("First episode not found"));
 
-        // Initialize gauge states with default values (50)
+        StoryNode rootNode = storyNodeRepository.findByEpisodeAndDepth(firstEpisode, 0)
+            .orElseThrow(() -> new RuntimeException("Root node not found"));
+
         Map<String, Integer> initialGauges = new HashMap<>();
-        if (fullStory.getContext() != null && fullStory.getContext().getSelectedGauges() != null) {
-            for (GaugeDto gauge : fullStory.getContext().getSelectedGauges()) {
-                initialGauges.put(gauge.getId(), 50);
+        try {
+            // Get selected gauge IDs
+            List<String> selectedGaugeIds = new ArrayList<>();
+            if (storyCreation.getSelectedGaugeIdsJson() != null) {
+                selectedGaugeIds = objectMapper.readValue(storyCreation.getSelectedGaugeIdsJson(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
             }
+
+            // Initialize only selected gauges
+            if (!selectedGaugeIds.isEmpty()) {
+                for (String gaugeId : selectedGaugeIds) {
+                    initialGauges.put(gaugeId, 50);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse selected gauges JSON", e);
         }
 
-        // Get first episode
-        EpisodeDto firstEpisode = fullStory.getEpisodes().stream()
-            .min(Comparator.comparingInt(EpisodeDto::getOrder))
-            .orElseThrow(() -> new RuntimeException("No episodes found"));
-
-        // Get root node (depth 0)
-        StoryNodeDto rootNode = findRootNode(firstEpisode);
-
-        // Create new game session
         GameSession session = GameSession.builder()
+            .user(user)
             .storyDataId(storyDataId)
-            .currentEpisodeId(firstEpisode.getId())
-            .currentNodeId(rootNode.getId())
+            .currentEpisodeId(firstEpisode.getId().toString())
+            .currentNodeId(rootNode.getId().toString())
             .gaugeStates(initialGauges)
             .accumulatedTags(new HashMap<>())
-            .visitedNodes(new ArrayList<>(List.of(rootNode.getId())))
+            .visitedNodes(new ArrayList<>(List.of(rootNode.getId().toString())))
             .completedEpisodes(new ArrayList<>())
             .build();
 
         session = gameSessionRepository.save(session);
+        log.info("Game session created for user: {} with sessionId: {}", user.getUsername(), session.getId());
 
-        // Generate image for the first node
-        String imageUrl = generateNodeImage(rootNode, firstEpisode);
+        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(firstEpisode));
 
-        return buildGameStateResponse(session, fullStory, firstEpisode, rootNode, true, imageUrl);
+        return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, imageUrl);
     }
 
     @Transactional(readOnly = true)
-    public GameStateResponseDto getGameState(String sessionId) {
+    public GameStateResponseDto getGameState(String sessionId, com.story.game.auth.entity.User user) {
         GameSession session = gameSessionRepository.findById(sessionId)
             .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
-        StoryData storyData = storyDataRepository.findById(session.getStoryDataId())
-            .orElseThrow(() -> new RuntimeException("Story not found"));
+        // Verify user owns this session
+        if (session.getUser() != null && !session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized: You don't have permission to access this game session");
+        }
 
-        FullStoryDto fullStory = getFullStory(storyData);
-        EpisodeDto currentEpisode = findEpisodeById(fullStory, session.getCurrentEpisodeId());
-        StoryNodeDto currentNode = findNodeById(currentEpisode, session.getCurrentNodeId());
+        StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(session.getStoryDataId())
+            .orElseThrow(() -> new RuntimeException("StoryCreation not found"));
 
-        boolean isFirstNode = session.getVisitedNodes().size() == 1;
+        Episode currentEpisode = episodeRepository.findById(UUID.fromString(session.getCurrentEpisodeId()))
+            .orElseThrow(() -> new RuntimeException("Episode not found"));
+        StoryNode currentNode = storyNodeRepository.findById(UUID.fromString(session.getCurrentNodeId()))
+            .orElseThrow(() -> new RuntimeException("Node not found"));
 
-        // Generate image for the current node
-        String imageUrl = generateNodeImage(currentNode, currentEpisode);
+        boolean isFirstNodeOfEpisode = currentNode.getDepth() == 0;
 
-        return buildGameStateResponse(session, fullStory, currentEpisode, currentNode, isFirstNode, imageUrl);
+        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(currentNode), storyMapper.toEpisodeDto(currentEpisode));
+
+        return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, imageUrl);
     }
 
     @Transactional
-    public GameStateResponseDto makeChoice(String sessionId, Integer choiceIndex) {
+    public GameStateResponseDto makeChoice(String sessionId, Integer choiceIndex, com.story.game.auth.entity.User user) {
         GameSession session = gameSessionRepository.findById(sessionId)
             .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
+        // Verify user owns this session
+        if (session.getUser() != null && !session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized: You don't have permission to modify this game session");
+        }
+
         if (session.getIsCompleted()) {
-            throw new RuntimeException("Game is already completed");
+            log.info("Game is already completed. Returning final state.");
+            return getGameState(sessionId, user);
         }
 
-        StoryData storyData = storyDataRepository.findById(session.getStoryDataId())
-            .orElseThrow(() -> new RuntimeException("Story not found"));
+        StoryNode currentNode = storyNodeRepository.findById(UUID.fromString(session.getCurrentNodeId()))
+            .orElseThrow(() -> new RuntimeException("Current node not found: " + session.getCurrentNodeId()));
 
-        FullStoryDto fullStory = getFullStory(storyData);
-        EpisodeDto currentEpisode = findEpisodeById(fullStory, session.getCurrentEpisodeId());
-        StoryNodeDto currentNode = findNodeById(currentEpisode, session.getCurrentNodeId());
+        List<StoryChoice> choices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(currentNode);
 
-        // Validate choice
-        if (currentNode.getChoices() == null || choiceIndex >= currentNode.getChoices().size()) {
-            throw new RuntimeException("Invalid choice index: " + choiceIndex);
+        if (choices.isEmpty()) {
+            log.info("Leaf node reached (no choices). Ending episode.");
+            return handleEpisodeEnd(session);
         }
 
-        StoryChoiceDto selectedChoice = currentNode.getChoices().get(choiceIndex);
+        if (choiceIndex < 0 || choiceIndex >= choices.size()) {
+            throw new RuntimeException("Invalid choice index: " + choiceIndex + " (valid range: 0-" + (choices.size() - 1) + ")");
+        }
 
-        // Accumulate tags from the choice
+        StoryChoice selectedChoice = choices.get(choiceIndex);
+
         if (selectedChoice.getTags() != null) {
-            for (String tag : selectedChoice.getTags()) {
-                session.getAccumulatedTags().merge(tag, 1, Integer::sum);
+            try {
+                List<String> tags = objectMapper.readValue(selectedChoice.getTags(), objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                for (String tag : tags) {
+                    session.getAccumulatedTags().merge(tag, 1, Integer::sum);
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse choice tags", e);
             }
         }
 
-        // Find next node
-        StoryNodeDto nextNode = findNextNode(currentEpisode, currentNode.getId(), choiceIndex);
+        StoryNode nextNode = selectedChoice.getDestinationNode();
 
         if (nextNode != null) {
-            // Move to next node
-            session.setCurrentNodeId(nextNode.getId());
-            session.getVisitedNodes().add(nextNode.getId());
-            session = gameSessionRepository.save(session);
+            session.setCurrentNodeId(nextNode.getId().toString());
+            session.getVisitedNodes().add(nextNode.getId().toString());
+            gameSessionRepository.save(session);
 
-            // Generate image for the next node
-            String imageUrl = generateNodeImage(nextNode, currentEpisode);
+            // Check if the next node is a leaf node (ending node with no choices)
+            List<StoryChoice> nextNodeChoices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(nextNode);
+            if (nextNodeChoices.isEmpty()) {
+                log.info("Next node is a leaf node (ending node). Triggering episode end.");
+                return handleEpisodeEnd(session);
+            }
 
-            return buildGameStateResponse(session, fullStory, currentEpisode, nextNode, false, imageUrl);
+            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(nextNode), storyMapper.toEpisodeDto(currentNode.getEpisode()));
+
+            return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, imageUrl);
         } else {
-            // Reached leaf node - evaluate episode ending
-            return handleEpisodeEnd(session, fullStory, currentEpisode);
+            return handleEpisodeEnd(session);
         }
     }
 
-    private GameStateResponseDto handleEpisodeEnd(GameSession session, FullStoryDto fullStory,
-        EpisodeDto currentEpisode) {
-        // Evaluate episode endings based on accumulated tags
-        EpisodeEndingDto matchedEnding = evaluateEpisodeEnding(currentEpisode,
-            session.getAccumulatedTags());
+    private GameStateResponseDto handleEpisodeEnd(GameSession session) {
+        log.info("=== Handle Episode End ===");
+        Episode currentEpisode = episodeRepository.findById(UUID.fromString(session.getCurrentEpisodeId()))
+            .orElseThrow(() -> new RuntimeException("Episode not found: " + session.getCurrentEpisodeId()));
+        StoryCreation storyCreation = currentEpisode.getStory();
+
+        log.info("Current Episode: order={}, title={}", currentEpisode.getOrder(), currentEpisode.getTitle());
+
+        List<EpisodeEnding> endings = episodeEndingRepository.findByEpisode(currentEpisode);
+        log.info("Found {} episode endings", endings.size());
+        EpisodeEnding matchedEnding = evaluateEpisodeEnding(endings, session.getAccumulatedTags());
+        log.info("Matched ending: {}", matchedEnding != null ? matchedEnding.getTitle() : "null");
 
         if (matchedEnding != null && matchedEnding.getGaugeChanges() != null) {
-            // Apply gauge changes
-            for (Map.Entry<String, Integer> change : matchedEnding.getGaugeChanges().entrySet()) {
-                session.getGaugeStates().merge(change.getKey(), change.getValue(), Integer::sum);
-                // Clamp between 0 and 100
-                int newValue = Math.max(0,
-                    Math.min(100, session.getGaugeStates().get(change.getKey())));
-                session.getGaugeStates().put(change.getKey(), newValue);
+            try {
+                Map<String, Integer> gaugeChanges = objectMapper.readValue(matchedEnding.getGaugeChanges(),
+                    objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Integer.class));
+                for (Map.Entry<String, Integer> change : gaugeChanges.entrySet()) {
+                    session.getGaugeStates().merge(change.getKey(), change.getValue(), Integer::sum);
+                    int newValue = Math.max(0, Math.min(100, session.getGaugeStates().get(change.getKey())));
+                    session.getGaugeStates().put(change.getKey(), newValue);
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse gauge changes for ending {}", matchedEnding.getId(), e);
             }
         }
 
-        // Mark episode as completed
-        session.getCompletedEpisodes().add(currentEpisode.getId());
+        session.getCompletedEpisodes().add(currentEpisode.getId().toString());
 
-        // Check for next episode
-        EpisodeDto nextEpisode = findNextEpisode(fullStory, currentEpisode.getOrder());
+        log.info("Looking for next episode: order={}", currentEpisode.getOrder() + 1);
+        Optional<Episode> nextEpisodeOpt = episodeRepository.findByStoryAndOrder(storyCreation, currentEpisode.getOrder() + 1);
 
-        if (nextEpisode != null) {
-            // Move to next episode
-            session.setCurrentEpisodeId(nextEpisode.getId());
-            StoryNodeDto rootNode = findRootNode(nextEpisode);
-            session.setCurrentNodeId(rootNode.getId());
-            session.getVisitedNodes().add(rootNode.getId());
-            session.setAccumulatedTags(new HashMap<>()); // Reset tags for new episode
-            session = gameSessionRepository.save(session);
+        if (nextEpisodeOpt.isPresent()) {
+            Episode nextEpisode = nextEpisodeOpt.get();
+            log.info("✅ Next episode found: order={}, title={}", nextEpisode.getOrder(), nextEpisode.getTitle());
 
-            // Generate image for the next episode's root node
-            String imageUrl = generateNodeImage(rootNode, nextEpisode);
+            StoryNode rootNode = storyNodeRepository.findByEpisodeAndDepth(nextEpisode, 0)
+                .orElseThrow(() -> new RuntimeException("Root node not found for episode: " + nextEpisode.getId()));
+            log.info("Root node found for next episode: {}", rootNode.getId());
 
-            GameStateResponseDto response = buildGameStateResponse(session, fullStory, nextEpisode,
-                rootNode, true, imageUrl);
+            session.setCurrentEpisodeId(nextEpisode.getId().toString());
+            session.setCurrentNodeId(rootNode.getId().toString());
+            session.getVisitedNodes().add(rootNode.getId().toString());
+            session.setAccumulatedTags(new HashMap<>());
+            gameSessionRepository.save(session);
+
+            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(nextEpisode));
+            GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, imageUrl);
             response.setIsEpisodeEnd(true);
-            response.setEpisodeEnding(matchedEnding);
+            response.setEpisodeEnding(storyMapper.toEpisodeEndingDto(matchedEnding));
+
+            log.info("Returning response with isEpisodeEnd=true and next episode data");
             return response;
         } else {
-            // Game completed - evaluate final ending
-            return handleGameEnd(session, fullStory, matchedEnding);
+            log.info("❌ No next episode found. Game ends here.");
+            return handleGameEnd(session, storyCreation, matchedEnding);
         }
     }
 
-    private GameStateResponseDto handleGameEnd(GameSession session, FullStoryDto fullStory,
-        EpisodeEndingDto lastEpisodeEnding) {
-        FinalEndingDto matchedFinalEnding = evaluateFinalEnding(fullStory,
-            session.getGaugeStates());
+    private GameStateResponseDto handleGameEnd(GameSession session, StoryCreation storyCreation, EpisodeEnding lastEpisodeEnding) {
+        FinalEndingDto matchedFinalEnding = evaluateFinalEnding(storyCreation, session.getGaugeStates());
 
         session.setIsCompleted(true);
         session.setFinalEndingId(matchedFinalEnding != null ? matchedFinalEnding.getId() : null);
-        session = gameSessionRepository.save(session);
+        gameSessionRepository.save(session);
 
-        GameStateResponseDto response = GameStateResponseDto.builder()
-            .sessionId(session.getId())
-            .gaugeStates(session.getGaugeStates())
-            .accumulatedTags(session.getAccumulatedTags())
-            .gaugeDefinitions(fullStory.getContext().getSelectedGauges())
-            .isEpisodeEnd(true)
-            .isGameEnd(true)
-            .episodeEnding(lastEpisodeEnding)
-            .finalEnding(matchedFinalEnding)
-            .build();
+        List<GaugeDto> gaugeDefinitions = new ArrayList<>();
+         try {
+            if (storyCreation.getGaugesJson() != null) {
+                gaugeDefinitions = objectMapper.readValue(storyCreation.getGaugesJson(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, GaugeDto.class));
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse gauge definitions from StoryCreation", e);
+        }
 
-        return response;
-    }
-
-    private GameStateResponseDto buildGameStateResponse(GameSession session, FullStoryDto fullStory,
-        EpisodeDto episode, StoryNodeDto node, boolean showIntro, String imageUrl) {
         return GameStateResponseDto.builder()
             .sessionId(session.getId())
-            .currentEpisodeId(session.getCurrentEpisodeId())
-            .currentNodeId(session.getCurrentNodeId())
             .gaugeStates(session.getGaugeStates())
             .accumulatedTags(session.getAccumulatedTags())
-            .episodeTitle(episode.getTitle())
-            .introText(showIntro ? episode.getIntroText() : null)
-            .nodeText(node.getText())
-            .nodeDetails(node.getDetails())
-            .choices(node.getChoices())
-            .imageUrl(imageUrl)
-            .gaugeDefinitions(fullStory.getContext().getSelectedGauges())
-            .isEpisodeEnd(false)
-            .isGameEnd(false)
+            .gaugeDefinitions(gaugeDefinitions)
+            .choices(Collections.emptyList())  // Ensure choices is never null
+            .isEpisodeEnd(true)
+            .isGameEnd(true)
+            .episodeEnding(storyMapper.toEpisodeEndingDto(lastEpisodeEnding))
+            .finalEnding(matchedFinalEnding)
             .build();
     }
 
-    /**
-     * Generate image for a story node via relay server
-     */
+    private GameStateResponseDto buildGameStateResponse(GameSession session, StoryCreation storyCreation,
+                                                        Episode episode, StoryNode node, boolean showIntro, String imageUrl) {
+        List<StoryChoice> choices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(node);
+        List<StoryChoiceDto> choiceDtos = choices.stream()
+                .map(storyMapper::toStoryChoiceDto)
+                .collect(Collectors.toList());
+
+        List<GaugeDto> gaugeDefinitions = new ArrayList<>();
+        try {
+            if (storyCreation.getGaugesJson() != null) {
+                gaugeDefinitions = objectMapper.readValue(storyCreation.getGaugesJson(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, GaugeDto.class));
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse gauge definitions from StoryCreation", e);
+        }
+
+        // Get node details from mapper
+        StoryNodeDto nodeDto = storyMapper.toStoryNodeDto(node);
+        StoryNodeDto.StoryNodeDetailDto nodeDetails = nodeDto != null ? nodeDto.getDetails() : null;
+
+        return GameStateResponseDto.builder()
+                .sessionId(session.getId())
+                .currentEpisodeId(session.getCurrentEpisodeId())
+                .currentNodeId(session.getCurrentNodeId())
+                .gaugeStates(session.getGaugeStates())
+                .accumulatedTags(session.getAccumulatedTags())
+                .episodeTitle(episode.getTitle())
+                .introText(showIntro ? episode.getIntroText() : null)
+                .nodeText(node.getText())
+                .nodeDetails(nodeDetails)
+                .choices(choiceDtos)
+                .imageUrl(imageUrl)
+                .gaugeDefinitions(gaugeDefinitions)
+                .isEpisodeEnd(false)
+                .isGameEnd(false)
+                .build();
+    }
+
     private String generateNodeImage(StoryNodeDto node, EpisodeDto episode) {
         try {
             com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
@@ -257,142 +339,58 @@ public class GameService {
             return response.getImageUrl();
         } catch (Exception e) {
             log.error("Failed to generate image for node {}: {}", node.getId(), e.getMessage());
-            // Return null if image generation fails - game can continue without image
             return null;
         }
     }
 
-    private FullStoryDto getFullStory(StoryData storyData) {
-        String storyJson = s3Service.downloadFileContent(storyData.getStoryFileKey());
-        return parseStoryJson(storyJson);
-    }
-
-    private FullStoryDto parseStoryJson(String json) {
-        try {
-            return objectMapper.readValue(json, FullStoryDto.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse story JSON", e);
-        }
-    }
-
-    private StoryNodeDto findRootNode(EpisodeDto episode) {
-        if (episode.getNodes() == null || episode.getNodes().isEmpty()) {
-            throw new RuntimeException("No nodes found in episode: " + episode.getId());
-        }
-        return episode.getNodes().stream()
-            .filter(node -> node.getDepth() != null && node.getDepth() == 0)
-            .findFirst()
-            .orElseThrow(
-                () -> new RuntimeException("Root node not found in episode: " + episode.getId()));
-    }
-
-    private EpisodeDto findEpisodeById(FullStoryDto story, String episodeId) {
-        return story.getEpisodes().stream()
-            .filter(ep -> ep.getId().equals(episodeId))
-            .findFirst()
-            .orElseThrow(() -> new RuntimeException("Episode not found: " + episodeId));
-    }
-
-    private StoryNodeDto findNodeById(EpisodeDto episode, String nodeId) {
-        if (episode.getNodes() == null || episode.getNodes().isEmpty()) {
-            throw new RuntimeException("No nodes found in episode: " + episode.getId());
-        }
-        return episode.getNodes().stream()
-            .filter(node -> node.getId().equals(nodeId))
-            .findFirst()
-            .orElseThrow(() -> new RuntimeException("Node not found: " + nodeId));
-    }
-
-    private StoryNodeDto findNextNode(EpisodeDto episode, String parentId, int choiceIndex) {
-        if (episode.getNodes() == null) {
+    private EpisodeEnding evaluateEpisodeEnding(List<EpisodeEnding> endings, Map<String, Integer> accumulatedTags) {
+        if (endings == null || endings.isEmpty()) {
             return null;
         }
-
-        // Find child nodes with matching parent_id and sort by ID for consistency
-        List<StoryNodeDto> children = episode.getNodes().stream()
-            .filter(node -> parentId.equals(node.getParentId()))
-            .sorted(Comparator.comparing(StoryNodeDto::getId))
-            .collect(Collectors.toList());
-
-        if (children.isEmpty()) {
-            return null; // Leaf node reached
-        }
-
-        // Return the child corresponding to the choice index
-        if (choiceIndex >= 0 && choiceIndex < children.size()) {
-            return children.get(choiceIndex);
-        }
-
-        log.warn("Invalid choice index {} for parent {} (total children: {}). Using first child.",
-                 choiceIndex, parentId, children.size());
-        return children.get(0); // Fallback to first child
-    }
-
-    private EpisodeDto findNextEpisode(FullStoryDto story, int currentOrder) {
-        return story.getEpisodes().stream()
-            .filter(ep -> ep.getOrder() > currentOrder)
-            .min(Comparator.comparingInt(EpisodeDto::getOrder))
-            .orElse(null);
-    }
-
-    private EpisodeEndingDto evaluateEpisodeEnding(EpisodeDto episode,
-        Map<String, Integer> accumulatedTags) {
-        if (episode.getEndings() == null || episode.getEndings().isEmpty()) {
-            return null;
-        }
-
-        for (EpisodeEndingDto ending : episode.getEndings()) {
+        for (EpisodeEnding ending : endings) {
             if (evaluateCondition(ending.getCondition(), accumulatedTags)) {
                 return ending;
             }
         }
-
-        // Return first ending as default
-        return episode.getEndings().get(0);
+        return endings.get(0);
     }
 
-    private FinalEndingDto evaluateFinalEnding(FullStoryDto story,
-        Map<String, Integer> gaugeStates) {
-        if (story.getContext().getFinalEndings() == null) {
+    private FinalEndingDto evaluateFinalEnding(StoryCreation storyCreation, Map<String, Integer> gaugeStates) {
+        if (storyCreation.getEndingConfigJson() == null) {
             return null;
         }
+        try {
+            List<FinalEndingDto> finalEndings = objectMapper.readValue(storyCreation.getEndingConfigJson(),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, FinalEndingDto.class));
 
-        for (FinalEndingDto ending : story.getContext().getFinalEndings()) {
-            if (evaluateCondition(ending.getCondition(), gaugeStates)) {
-                return ending;
+            for (FinalEndingDto ending : finalEndings) {
+                if (evaluateCondition(ending.getCondition(), gaugeStates)) {
+                    return ending;
+                }
             }
+            return finalEndings.isEmpty() ? null : finalEndings.get(0);
+        } catch (Exception e) {
+            log.error("Failed to evaluate final endings", e);
+            return null;
         }
-
-        // Return first ending as default
-        return story.getContext().getFinalEndings().isEmpty() ? null :
-            story.getContext().getFinalEndings().get(0);
     }
 
     private boolean evaluateCondition(String condition, Map<String, Integer> values) {
         if (condition == null || condition.isBlank()) {
             return true;
         }
-
         try {
-            // Simple condition parser for expressions like "hope >= 70 AND trust >= 60"
-            String expr = condition
-                .replace("AND", "&&")
-                .replace("OR", "||")
-                .replace(">=", ">=")
-                .replace("<=", "<=");
+            String expr = condition.replace("AND", "&&").replace("OR", "||");
 
-            // Replace variable names with values
+            // Use word boundary regex to prevent partial matches
+            // e.g., "love" won't match in "lovely"
             for (Map.Entry<String, Integer> entry : values.entrySet()) {
-                expr = expr.replace(entry.getKey(), String.valueOf(entry.getValue()));
+                String pattern = "\\b" + java.util.regex.Pattern.quote(entry.getKey()) + "\\b";
+                expr = expr.replaceAll(pattern, String.valueOf(entry.getValue()));
             }
 
-            // Evaluate using JavaScript engine
             ScriptEngineManager manager = new ScriptEngineManager();
             ScriptEngine engine = manager.getEngineByName("JavaScript");
-            if (engine == null) {
-                // Fallback: simple evaluation
-                return simpleEvaluate(condition, values);
-            }
             Object result = engine.eval(expr);
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
@@ -401,75 +399,41 @@ public class GameService {
         }
     }
 
-    private boolean simpleEvaluate(String condition, Map<String, Integer> values) {
-        // Simple parser for conditions like "cooperative>=2 AND trusting>=1"
-        String[] andParts = condition.split("\\s+AND\\s+");
-
-        for (String part : andParts) {
-            part = part.trim();
-            if (!evaluateSingleCondition(part, values)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean evaluateSingleCondition(String condition, Map<String, Integer> values) {
-        // Parse conditions like "hope >= 70" or "cooperative>=2"
-        String[] operators = {">=", "<=", ">", "<", "=="};
-
-        for (String op : operators) {
-            if (condition.contains(op)) {
-                String[] parts = condition.split(op);
-                if (parts.length == 2) {
-                    String varName = parts[0].trim();
-                    int threshold = Integer.parseInt(parts[1].trim());
-                    int value = values.getOrDefault(varName, 0);
-
-                    return switch (op) {
-                        case ">=" -> value >= threshold;
-                        case "<=" -> value <= threshold;
-                        case ">" -> value > threshold;
-                        case "<" -> value < threshold;
-                        case "==" -> value == threshold;
-                        default -> false;
-                    };
-                }
-            }
-        }
-        return true;
-    }
-
-    // Story data management
     @Transactional
     public StoryData saveStoryData(String title, String description, String storyJson) {
-        String fileKey = "stories/" + UUID.randomUUID().toString() + ".json";
-        s3Service.uploadFile(fileKey, storyJson);
-        FullStoryDto fullStory = parseStoryJson(storyJson);
+        try {
+            FullStoryDto fullStory = objectMapper.readValue(storyJson, FullStoryDto.class);
+            String fileKey = "stories/" + UUID.randomUUID().toString() + ".json";
+            // s3Service.uploadFile(fileKey, storyJson); // This might be desired for backup
 
-        StoryData storyData = StoryData.builder()
-            .title(title)
-            .description(description)
-            .storyFileKey(fileKey)
-            .totalEpisodes(fullStory.getMetadata().getTotalEpisodes())
-            .totalNodes(fullStory.getMetadata().getTotalNodes())
-            .build();
+            Integer totalEpisodes = fullStory.getMetadata() != null ? fullStory.getMetadata().getTotalEpisodes() : 0;
+            Integer totalNodes = fullStory.getMetadata() != null ? fullStory.getMetadata().getTotalNodes() : 0;
 
-        return storyDataRepository.save(storyData);
+            StoryData storyData = StoryData.builder()
+                .title(title)
+                .description(description)
+                .storyFileKey(fileKey)
+                .totalEpisodes(totalEpisodes)
+                .totalNodes(totalNodes)
+                .build();
+
+            return storyDataRepository.save(storyData);
+        } catch (Exception e) {
+            log.error("Failed to parse or save story data", e);
+            throw new RuntimeException("Failed to save story data: " + e.getMessage(), e);
+        }
     }
 
     public List<StoryData> getAllStories() {
         return storyDataRepository.findAll();
     }
 
-    /**
-     * Get full story data by storyDataId (for frontend game composition)
-     */
     @Transactional(readOnly = true)
     public FullStoryDto getStoryDataById(Long storyDataId) {
         StoryData storyData = storyDataRepository.findById(storyDataId)
             .orElseThrow(() -> new RuntimeException("Story data not found: " + storyDataId));
-
-        return getFullStory(storyData);
+        StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
+            .orElseThrow(() -> new RuntimeException("StoryCreation not found"));
+        return storyMapper.buildFullStoryDtoFromDb(storyCreation);
     }
 }

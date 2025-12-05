@@ -34,7 +34,7 @@ public class StoryCreation {
     private String analysisResultFileKey;  // S3에 저장된 분석 결과 파일의 키 (선택사항)
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = 50)
     @Builder.Default
     private CreationStatus status = CreationStatus.ANALYZING;
 

@@ -7,6 +7,7 @@ import com.story.game.gameplay.dto.GameStateResponseDto;
 import com.story.game.gameplay.dto.StartGameRequestDto;
 import com.story.game.gameplay.service.GameService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -40,7 +41,7 @@ public class GameController {
 
     public ResponseEntity<GameStateResponseDto> startGame(
 
-            @RequestBody StartGameRequestDto request,
+            @Valid @RequestBody StartGameRequestDto request,
 
             @AuthenticationPrincipal UserDetails userDetails) {
 
@@ -50,7 +51,8 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        GameStateResponseDto response = gameService.startGame(request.getStoryDataId());
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        GameStateResponseDto response = gameService.startGame(request.getStoryDataId(), user);
 
         log.info("Game started. SessionId: {}", response.getSessionId());
 
@@ -80,7 +82,8 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        GameStateResponseDto response = gameService.getGameState(sessionId);
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        GameStateResponseDto response = gameService.getGameState(sessionId, user);
 
         return ResponseEntity.ok(response);
 
@@ -100,7 +103,7 @@ public class GameController {
 
             @PathVariable String sessionId,
 
-            @RequestBody ChoiceRequestDto request,
+            @Valid @RequestBody ChoiceRequestDto request,
 
             @AuthenticationPrincipal UserDetails userDetails) {
 
@@ -112,7 +115,8 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        GameStateResponseDto response = gameService.makeChoice(sessionId, request.getChoiceIndex());
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        GameStateResponseDto response = gameService.makeChoice(sessionId, request.getChoiceIndex(), user);
 
         return ResponseEntity.ok(response);
 

@@ -27,6 +27,9 @@ public class StoryChoice {
     @Column(columnDefinition = "TEXT")
     private String text;
 
+    @Column(name = "choice_order")
+    private Integer choiceOrder;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "TEXT")
     private String tags;
