@@ -15,6 +15,7 @@ import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.mapper.StoryMapper;
+import com.story.game.story.repository.EpisodeEndingRepository;
 import com.story.game.story.repository.EpisodeRepository;
 import com.story.game.story.repository.StoryNodeRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -43,6 +44,7 @@ public class SequentialGenerationService {
     private final StoryDataRepository storyDataRepository;
     private final EpisodeRepository episodeRepository;
     private final StoryNodeRepository storyNodeRepository;
+    private final EpisodeEndingRepository episodeEndingRepository;
     private final WebClient aiServerWebClient;
     private final ObjectMapper objectMapper;
     private final StoryMapper storyMapper;
@@ -54,6 +56,7 @@ public class SequentialGenerationService {
             StoryDataRepository storyDataRepository,
             EpisodeRepository episodeRepository,
             StoryNodeRepository storyNodeRepository,
+            EpisodeEndingRepository episodeEndingRepository,
             WebClient aiServerWebClient,
             ObjectMapper objectMapper,
             StoryMapper storyMapper,
@@ -63,6 +66,7 @@ public class SequentialGenerationService {
         this.storyDataRepository = storyDataRepository;
         this.episodeRepository = episodeRepository;
         this.storyNodeRepository = storyNodeRepository;
+        this.episodeEndingRepository = episodeEndingRepository;
         this.aiServerWebClient = aiServerWebClient;
         this.objectMapper = objectMapper;
         this.storyMapper = storyMapper;
@@ -142,7 +146,9 @@ public class SequentialGenerationService {
             int totalEpisodes = storyCreation.getTotalEpisodesToGenerate();
             log.info("📊 Total episodes to generate: {}", totalEpisodes);
 
+            log.info("[LOG-STEP 1] Preparing AI request for episode {}", episodeOrder);
             GenerateNextEpisodeRequest aiRequest = prepareAiRequest(storyCreation, episodeOrder, previousEpisode);
+            log.info("[LOG-STEP 2] AI request prepared. Calling AI server...");
 
             log.info("=== AI Request for Episode {} ===", episodeOrder);
             log.info("📤 Sending AI request to: /generate-next-episode");
@@ -154,20 +160,56 @@ public class SequentialGenerationService {
                     .retrieve()
                     .bodyToMono(EpisodeDto.class)
                     .block();
+            
+            log.info("[LOG-STEP 3] AI response received.");
 
             if (newEpisodeDto == null) {
+                log.error("[LOG-FAIL] AI server returned null DTO.");
                 throw new RuntimeException("AI server returned no data for the new episode.");
             }
             log.info("✅ AI Response received - Episode title: {}", newEpisodeDto.getTitle());
+            log.info("[LOG-STEP 4] AI DTO is valid. Proceeding to save to DB...");
 
             // 1. Save the new episode to the database
             storyMapper.saveEpisodeDtoToDb(newEpisodeDto, storyCreation);
+            
+            log.info("[LOG-STEP 5] saveEpisodeDtoToDb completed. Fetching new entity...");
+
+            // Fetch the episode entity we just saved
+            Episode newEpisodeEntity = episodeRepository.findByStoryAndOrder(storyCreation, episodeOrder)
+                .orElseThrow(() -> new RuntimeException("Failed to fetch the newly created episode for order: " + episodeOrder));
+
+            log.info("[LOG-STEP 6] New episode entity fetched. Processing episode endings...");
+            // Save the episode endings provided by the AI
+            if (newEpisodeDto.getEndings() != null && !newEpisodeDto.getEndings().isEmpty()) {
+                log.info("Saving {} episode endings for episode order {}", newEpisodeDto.getEndings().size(), episodeOrder);
+                for (com.story.game.common.dto.EpisodeEndingDto endingDto : newEpisodeDto.getEndings()) {
+                    com.story.game.story.entity.EpisodeEnding endingEntity = new com.story.game.story.entity.EpisodeEnding();
+                    endingEntity.setEpisode(newEpisodeEntity);
+                    endingEntity.setTitle(endingDto.getTitle());
+                    endingEntity.setText(endingDto.getText());
+                    endingEntity.setCondition(endingDto.getCondition());
+
+                    if (endingDto.getGaugeChanges() != null) {
+                        try {
+                            endingEntity.setGaugeChanges(objectMapper.writeValueAsString(endingDto.getGaugeChanges()));
+                        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                            log.error("Failed to serialize gauge changes for episode ending", e);
+                        }
+                    }
+
+                    episodeEndingRepository.save(endingEntity);
+                }
+            }
+            log.info("[LOG-STEP 7] Episode endings processed. Uploading snapshot to S3...");
 
             // 2. Create a JSON snapshot and upload to S3
             FullStoryDto fullStoryForS3 = storyMapper.buildFullStoryDtoFromDb(storyCreation);
             String storyFileKey = "stories/" + storyId + ".json";
             s3Service.uploadFile(storyFileKey, objectMapper.writeValueAsString(fullStoryForS3));
             storyCreation.setS3FileKey(storyFileKey);
+
+            log.info("[LOG-STEP 8] S3 upload complete. Updating progress...");
 
             // 3. Update progress
             storyCreation.setCompletedEpisodes(episodeOrder);
@@ -195,6 +237,7 @@ public class SequentialGenerationService {
             }
             storyCreationRepository.save(storyCreation);
 
+            log.info("[LOG-STEP 9] Progress updated. Task finished successfully.");
             return newEpisodeDto;
 
         } catch (Exception e) {

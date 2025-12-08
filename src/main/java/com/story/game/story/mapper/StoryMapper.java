@@ -38,11 +38,24 @@ public class StoryMapper {
     public void saveEpisodeDtoToDb(EpisodeDto episodeDto, StoryCreation storyCreation) {
         Episode episode = toEpisodeEntity(episodeDto, storyCreation);
         if (episodeDto.getNodes() != null && !episodeDto.getNodes().isEmpty()) {
-            // Assuming the first node is the root
             StoryNode rootNode = toStoryNodeEntityRecursive(episodeDto.getNodes().get(0), episode, null);
-            episode.setNodes(Collections.singletonList(rootNode));
+            List<StoryNode> allNodes = new ArrayList<>();
+            flattenNodeTree(rootNode, allNodes, new HashSet<>());
+            episode.setNodes(allNodes);
         }
         episodeRepository.save(episode);
+    }
+
+    private void flattenNodeTree(StoryNode node, List<StoryNode> flatList, Set<StoryNode> visited) {
+        if (node == null || !visited.add(node)) { // Cycle detection
+            return;
+        }
+        flatList.add(node);
+        if (node.getOutgoingChoices() != null) {
+            for (StoryChoice choice : node.getOutgoingChoices()) {
+                flattenNodeTree(choice.getDestinationNode(), flatList, visited);
+            }
+        }
     }
 
     @Transactional(readOnly = true)

@@ -2,6 +2,7 @@ package com.story.game.creation.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.story.game.common.dto.*;
+import com.story.game.common.dto.FinalEndingDto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,6 +19,7 @@ public class NovelAnalysisResponseDto {
     private String summary;
     private List<CharacterDto> characters;
     private List<GaugeDto> gauges;
+    private List<FinalEndingDto> finalEndings;
 
     // 새로운 방식: S3 업로드 후 fileKey만 반환
     @JsonProperty("file_key")

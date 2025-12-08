@@ -179,6 +179,19 @@ public class GameService {
         if (nextNode != null) {
             session.setCurrentNodeId(nextNode.getId().toString());
             session.getVisitedNodes().add(nextNode.getId().toString());
+
+            if (nextNode.getNodeType() != null) {
+                String nodeType = nextNode.getNodeType().toUpperCase();
+                if (nodeType.equals("ENDING")) {
+                    log.info("Next node is an explicit ENDING node. Triggering episode end.");
+                    gameSessionRepository.save(session); // Save the session state before handling the end
+                    return handleEpisodeEnd(session);
+                } else if (nodeType.equals("FINAL_ENDING")) {
+                    log.info("Next node is a FINAL_ENDING node. Triggering game end.");
+                    return handleGameEnd(session, nextNode.getEpisode().getStory(), null);
+                }
+            }
+
             gameSessionRepository.save(session);
 
             // Check if the next node is a leaf node (ending node with no choices)

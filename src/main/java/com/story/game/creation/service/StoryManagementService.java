@@ -101,6 +101,7 @@ public class StoryManagementService {
             storyCreation.setSummary(response.getSummary());
             storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
             storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
+            storyCreation.setEndingConfigJson(objectMapper.writeValueAsString(response.getFinalEndings()));
             storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
             storyCreation.setCurrentPhase("GAUGES_READY");
             storyCreation.setProgressPercentage(30);
@@ -311,9 +312,6 @@ public class StoryManagementService {
             storyCreation.setDescription(request.getDescription());
             storyCreation.setNumEpisodes(request.getNumEpisodes());
             storyCreation.setMaxDepth(request.getMaxDepth());
-            storyCreation.setEndingConfigJson(
-                    objectMapper.writeValueAsString(request.getEndingConfig())
-            );
             storyCreation.setNumEpisodeEndings(request.getNumEpisodeEndings());
             storyCreation.setStatus(StoryCreation.CreationStatus.CONFIGURED);
             storyCreation.setCurrentPhase("CONFIGURED");
@@ -333,7 +331,6 @@ public class StoryManagementService {
                             .description(request.getDescription())
                             .numEpisodes(request.getNumEpisodes())
                             .maxDepth(request.getMaxDepth())
-                            .endingConfig(request.getEndingConfig())
                             .numEpisodeEndings(request.getNumEpisodeEndings())
                             .build())
                     .build();
