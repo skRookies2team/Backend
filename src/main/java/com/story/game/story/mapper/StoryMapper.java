@@ -264,6 +264,7 @@ public class StoryMapper {
         }
         return EpisodeEnding.builder()
                 .episode(episode)
+                .aiGeneratedId(dto.getId())  // AI가 생성한 ID 저장
                 .title(dto.getTitle())
                 .condition(dto.getCondition())
                 .text(dto.getText())

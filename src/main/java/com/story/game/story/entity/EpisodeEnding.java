@@ -23,6 +23,13 @@ public class EpisodeEnding {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
+    /**
+     * AI가 생성한 엔딩 ID (예: "ep1_ending_1", "ep2_ending_cooperative")
+     * 로깅, 분석, 추적용
+     */
+    @Column(name = "ai_generated_id")
+    private String aiGeneratedId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "episode_id", nullable = false)
     private Episode episode;

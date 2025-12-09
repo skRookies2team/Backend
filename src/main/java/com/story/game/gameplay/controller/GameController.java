@@ -202,6 +202,28 @@ public class GameController {
 
     }
 
+    /**
+     * Get final ending information for completed game
+     *
+     * 게임 완료 후 최종 엔딩 정보만 조회하는 전용 API
+     */
+    @GetMapping("/{sessionId}/ending")
+    public ResponseEntity<com.story.game.gameplay.dto.FinalEndingResponseDto> getFinalEnding(
+            @PathVariable String sessionId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("=== Get Final Ending Request ===");
+        log.info("SessionId: {}", sessionId);
+        log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
+
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        com.story.game.gameplay.dto.FinalEndingResponseDto response = gameService.getFinalEnding(sessionId, user);
+
+        log.info("Final ending retrieved: {}", response.getFinalEnding() != null ? response.getFinalEnding().getTitle() : "null");
+
+        return ResponseEntity.ok(response);
+    }
+
 }
 
 
