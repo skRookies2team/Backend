@@ -208,6 +208,10 @@ public class GameController {
      * 게임 완료 후 최종 엔딩 정보만 조회하는 전용 API
      */
     @GetMapping("/{sessionId}/ending")
+    @io.swagger.v3.oas.annotations.Operation(
+            summary = "최종 엔딩 조회",
+            description = "게임 완료 후 최종 엔딩 정보를 조회합니다. 게임이 완료되지 않았을 경우 에러를 반환합니다."
+    )
     public ResponseEntity<com.story.game.gameplay.dto.FinalEndingResponseDto> getFinalEnding(
             @PathVariable String sessionId,
             @AuthenticationPrincipal UserDetails userDetails) {
