@@ -1,5 +1,6 @@
 package com.story.game.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import java.util.List;
@@ -15,7 +16,8 @@ public class EpisodeDto {
     private String description;
     private String theme;
 
-    @JsonProperty("intro_text")
+    @JsonProperty(value = "intro_text", access = JsonProperty.Access.READ_WRITE)
+    @JsonAlias("introText")  // camelCase도 받을 수 있도록
     private String introText;
 
     private List<StoryNodeDto> nodes;

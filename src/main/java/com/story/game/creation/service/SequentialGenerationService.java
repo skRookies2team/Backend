@@ -168,6 +168,9 @@ public class SequentialGenerationService {
                 throw new RuntimeException("AI server returned no data for the new episode.");
             }
             log.info("✅ AI Response received - Episode title: {}", newEpisodeDto.getTitle());
+            log.info("📝 Intro text present: {} (length: {})",
+                newEpisodeDto.getIntroText() != null,
+                newEpisodeDto.getIntroText() != null ? newEpisodeDto.getIntroText().length() : 0);
             log.info("[LOG-STEP 4] AI DTO is valid. Proceeding to save to DB...");
 
             // 1. Save the new episode to the database
