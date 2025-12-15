@@ -24,6 +24,9 @@ public class StoryCreation {
     @Column(nullable = false)
     private String title;
 
+    @Column(length = 100)
+    private String genre;
+
     @Column(columnDefinition = "LONGTEXT")
     private String novelText;
 

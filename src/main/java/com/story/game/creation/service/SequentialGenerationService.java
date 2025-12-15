@@ -45,7 +45,7 @@ public class SequentialGenerationService {
     private final EpisodeRepository episodeRepository;
     private final StoryNodeRepository storyNodeRepository;
     private final EpisodeEndingRepository episodeEndingRepository;
-    private final WebClient aiServerWebClient;
+    private final WebClient relayServerWebClient;
     private final ObjectMapper objectMapper;
     private final StoryMapper storyMapper;
     private final S3Service s3Service;
@@ -57,7 +57,7 @@ public class SequentialGenerationService {
             EpisodeRepository episodeRepository,
             StoryNodeRepository storyNodeRepository,
             EpisodeEndingRepository episodeEndingRepository,
-            WebClient aiServerWebClient,
+            WebClient relayServerWebClient,
             ObjectMapper objectMapper,
             StoryMapper storyMapper,
             S3Service s3Service,
@@ -67,7 +67,7 @@ public class SequentialGenerationService {
         this.episodeRepository = episodeRepository;
         this.storyNodeRepository = storyNodeRepository;
         this.episodeEndingRepository = episodeEndingRepository;
-        this.aiServerWebClient = aiServerWebClient;
+        this.relayServerWebClient = relayServerWebClient;
         this.objectMapper = objectMapper;
         this.storyMapper = storyMapper;
         this.s3Service = s3Service;
@@ -154,8 +154,8 @@ public class SequentialGenerationService {
             log.info("📤 Sending AI request to: /generate-next-episode");
             log.info("📦 Request payload - episodeOrder: {}, has previousEpisode: {}", episodeOrder, previousEpisode != null);
 
-            EpisodeDto newEpisodeDto = aiServerWebClient.post()
-                    .uri("/generate-next-episode")
+            EpisodeDto newEpisodeDto = relayServerWebClient.post()
+                    .uri("/ai/generate-next-episode")
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(EpisodeDto.class)
@@ -227,6 +227,7 @@ public class SequentialGenerationService {
                 // Create the final StoryData entity for gameplay
                 StoryData storyData = StoryData.builder()
                     .title(storyCreation.getTitle())
+                    .genre(storyCreation.getGenre())
                     .description(storyCreation.getDescription())
                     .storyFileKey(storyCreation.getS3FileKey())
                     .totalEpisodes(episodeRepository.findByStoryAndOrder(storyCreation, totalEpisodes).map(e -> e.getOrder()).orElse(0))
@@ -306,8 +307,8 @@ public class SequentialGenerationService {
 
     public boolean checkAiServerHealth() {
         try {
-            String response = aiServerWebClient.get()
-                .uri("/health") // Assuming AI server has a /health endpoint
+            String response = relayServerWebClient.get()
+                .uri("/ai/health") // Relay server health endpoint
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();

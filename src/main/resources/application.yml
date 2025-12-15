@@ -44,7 +44,7 @@ ai-server:
 # Relay server configuration (AI 통신 중계)
 relay-server:
   url: ${RELAY_SERVER_URL:http://localhost:8081}
-  timeout: ${RELAY_SERVER_TIMEOUT:30000}  # 30 seconds in milliseconds (이미지 생성 시간)
+  timeout: ${RELAY_SERVER_TIMEOUT:600000}  # 10 minutes in milliseconds (AI 분석/생성 시간 고려)
 
 # JWT configuration
 jwt:

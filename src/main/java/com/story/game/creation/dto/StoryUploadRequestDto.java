@@ -12,6 +12,8 @@ public class StoryUploadRequestDto {
     @NotBlank(message = "Title is required")
     private String title;
 
+    private String genre;
+
     @NotBlank(message = "Novel text is required")
     private String novelText;
 }

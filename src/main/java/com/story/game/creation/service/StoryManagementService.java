@@ -27,7 +27,7 @@ public class StoryManagementService {
 
     private final StoryCreationRepository storyCreationRepository;
     private final StoryDataRepository storyDataRepository;
-    private final WebClient aiServerWebClient;
+    private final WebClient relayServerWebClient;
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
 
@@ -44,6 +44,7 @@ public class StoryManagementService {
         StoryCreation storyCreation = StoryCreation.builder()
                 .id(storyId)
                 .title(request.getTitle())
+                .genre(request.getGenre())
                 .novelText(request.getNovelText())
                 .status(StoryCreation.CreationStatus.ANALYZING)
                 .currentPhase("ANALYZING")
@@ -58,6 +59,7 @@ public class StoryManagementService {
         return StoryUploadResponseDto.builder()
                 .storyId(storyCreation.getId())
                 .title(storyCreation.getTitle())
+                .genre(storyCreation.getGenre())
                 .status(storyCreation.getStatus())
                 .createdAt(storyCreation.getCreatedAt())
                 .build();
@@ -67,13 +69,28 @@ public class StoryManagementService {
     public void startAnalysisAsync(String storyId, String novelText) {
         try {
             log.info("Starting AI analysis for story: {}", storyId);
+            log.info("Novel text parameter - is null: {}, length: {}",
+                novelText == null,
+                novelText != null ? novelText.length() : 0);
 
             NovelAnalysisRequestDto request = NovelAnalysisRequestDto.builder()
                     .novelText(novelText)
                     .build();
 
-            NovelAnalysisResponseDto response = aiServerWebClient.post()
-                    .uri("/analyze")
+            log.info("Created NovelAnalysisRequestDto - novelText field is null: {}, length: {}",
+                request.getNovelText() == null,
+                request.getNovelText() != null ? request.getNovelText().length() : 0);
+
+            try {
+                String requestJson = objectMapper.writeValueAsString(request);
+                log.info("Serialized JSON to send to relay-server: {}",
+                    requestJson.length() > 500 ? requestJson.substring(0, 500) + "..." : requestJson);
+            } catch (Exception e) {
+                log.warn("Failed to serialize request for logging", e);
+            }
+
+            NovelAnalysisResponseDto response = relayServerWebClient.post()
+                    .uri("/ai/analyze")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(NovelAnalysisResponseDto.class)
@@ -346,6 +363,7 @@ public class StoryManagementService {
                     .storyDataId(storyData.getId())
                     .metadata(StoryResultResponseDto.MetadataData.builder()
                             .title(storyData.getTitle())
+                            .genre(storyData.getGenre())
                             .description(storyData.getDescription())
                             .totalEpisodes(storyData.getTotalEpisodes())
                             .totalNodes(storyData.getTotalNodes())
@@ -448,8 +466,10 @@ public class StoryManagementService {
                     .resultFileKey(resultFileKey)
                     .build();
 
-            NovelAnalysisResponseDto response = aiServerWebClient.post()
-                    .uri("/analyze-from-s3")
+            log.info("Calling relay-server /ai/analyze-from-s3 endpoint for S3 mode");
+
+            NovelAnalysisResponseDto response = relayServerWebClient.post()
+                    .uri("/ai/analyze-from-s3")  // S3 전용 엔드포인트 사용
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(NovelAnalysisResponseDto.class)
