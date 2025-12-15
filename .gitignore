@@ -42,3 +42,40 @@ target/
 *.ear
 /hs_err_pid*
 commit_message.txt
+
+# Docker
+docker-compose.override.yml
+localstack-data/
+
+# AWS / Deployment
+.aws/
+*.pem
+*.key
+*.ppk
+*.cer
+credentials
+.credentials
+
+# Environment Variables (추가 보안)
+.env.local
+.env.*.local
+.env.production
+.env.prod
+application-secret.yml
+application-*.secret.yml
+
+# Backup Files
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+Thumbs.db
+desktop.ini
