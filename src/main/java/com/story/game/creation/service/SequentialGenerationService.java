@@ -242,7 +242,9 @@ public class SequentialGenerationService {
             storyCreationRepository.save(storyCreation);
 
             log.info("[LOG-STEP 9] Progress updated. Task finished successfully.");
-            return newEpisodeDto;
+            log.info("[LOG-STEP 10] Mapping new episode entity back to DTO for response.");
+            EpisodeDto responseDto = storyMapper.toEpisodeDto(newEpisodeEntity);
+            return responseDto;
 
         } catch (Exception e) {
             log.error("Episode generation task failed for storyId: {}", storyId, e);
