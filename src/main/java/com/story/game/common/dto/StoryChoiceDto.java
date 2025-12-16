@@ -10,4 +10,5 @@ import java.util.List;
 public class StoryChoiceDto {
     private String text;
     private List<String> tags;
+    private String immediateReaction;
 }

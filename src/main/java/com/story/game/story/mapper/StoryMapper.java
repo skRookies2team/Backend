@@ -250,6 +250,7 @@ public class StoryMapper {
                 .text(dto.getText())
                 .choiceOrder(order)
                 .tags(tagsJson)
+                .immediateReaction(dto.getImmediateReaction())
                 .build();
     }
 
@@ -384,6 +385,7 @@ public class StoryMapper {
         return StoryChoiceDto.builder()
                 .text(choice.getText())
                 .tags(tags)
+                .immediateReaction(choice.getImmediateReaction())
                 .build();
     }
 
