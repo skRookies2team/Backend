@@ -106,7 +106,7 @@ public class StoryManagementService {
             storyCreation.setSummary(response.getSummary());
             storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
             storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
-            storyCreation.setEndingConfigJson(objectMapper.writeValueAsString(response.getFinalEndings()));
+            // Note: finalEndings will be generated after user selects gauges (in selectGauges method)
             storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
             storyCreation.setCurrentPhase("GAUGES_READY");
             storyCreation.setProgressPercentage(30);
@@ -260,6 +260,38 @@ public class StoryManagementService {
             List<GaugeDto> selectedGauges = allGauges.stream()
                     .filter(g -> request.getSelectedGaugeIds().contains(g.getId()))
                     .toList();
+
+            // ✅ Now call /finalize-analysis to generate final endings based on selected gauges
+            try {
+                log.info("Calling /ai/finalize-analysis with {} selected gauges", selectedGauges.size());
+
+                Map<String, Object> finalizeRequest = Map.of(
+                        "novel_summary", storyCreation.getSummary(),
+                        "selected_gauges", selectedGauges
+                );
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> finalizeResponse = relayServerWebClient.post()
+                        .uri("/ai/finalize-analysis")
+                        .bodyValue(finalizeRequest)
+                        .retrieve()
+                        .bodyToMono(Map.class)
+                        .block();
+
+                if (finalizeResponse != null && finalizeResponse.containsKey("finalEndings")) {
+                    storyCreation.setEndingConfigJson(
+                            objectMapper.writeValueAsString(finalizeResponse.get("finalEndings"))
+                    );
+                    storyCreationRepository.save(storyCreation);
+                    log.info("Final endings generated and saved successfully");
+                } else {
+                    log.warn("No finalEndings in finalize-analysis response");
+                }
+            } catch (Exception e) {
+                log.error("Failed to finalize analysis (generate final endings)", e);
+                // Don't fail the whole request - just log the error
+                // The system can still proceed without finalEndings
+            }
 
             return GaugeSelectionResponseDto.builder()
                     .storyId(storyCreation.getId())
@@ -495,8 +527,7 @@ public class StoryManagementService {
                     storyCreation.setSummary(analysisData.getSummary());
                     storyCreation.setCharactersJson(objectMapper.writeValueAsString(analysisData.getCharacters()));
                     storyCreation.setGaugesJson(objectMapper.writeValueAsString(analysisData.getGauges()));
-                    // [핵심] 엔딩 정보를 DB에 저장해야 GameService가 읽을 수 있음
-                    storyCreation.setEndingConfigJson(objectMapper.writeValueAsString(analysisData.getFinalEndings()));
+                    // Note: finalEndings will be generated after user selects gauges (in selectGauges method)
 
                     log.info("Synced analysis data from S3 to DB for story: {}", storyId);
                 } catch (Exception e) {
@@ -508,7 +539,7 @@ public class StoryManagementService {
                 storyCreation.setSummary(response.getSummary());
                 storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
                 storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
-                storyCreation.setEndingConfigJson(objectMapper.writeValueAsString(response.getFinalEndings()));
+                // Note: finalEndings will be generated after user selects gauges (in selectGauges method)
             }
 
             storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
