@@ -14,7 +14,7 @@ public class StoryNodeDto {
     private Integer depth;
     private String text;
     private StoryNodeDetailDto details;
-    private List<StoryChoiceDto> choices;
+    private Map<String, Object> choices;
 
     @JsonProperty("parent_id")
     private String parentId;
