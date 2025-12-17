@@ -294,3 +294,5 @@ src/main/java/com/story/game/
 
 MIT License
 # test
+
+# Auto Deploy Test - 2025년 12월 17일 수 오후  4:59:40

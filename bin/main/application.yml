@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: story-game
+
+  datasource:
+    url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:story_game}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:true}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MariaDBDialect
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB      # 단일 파일 최대 크기 (동영상 100MB 지원)
+      max-request-size: 100MB   # 전체 요청 최대 크기
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# CORS configuration for React/Vue frontend
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+# Python AI server configuration
+ai-server:
+  url: ${AI_SERVER_URL:http://localhost:8000}
+  timeout: ${AI_SERVER_TIMEOUT:600000}  # 10 minutes in milliseconds (AI 분석/생성은 오래 걸릴 수 있음)
+
+# Relay server configuration (AI 통신 중계)
+relay-server:
+  url: ${RELAY_SERVER_URL:http://localhost:8081}
+  timeout: ${RELAY_SERVER_TIMEOUT:30000}  # 30 seconds in milliseconds (이미지 생성 시간)
+
+# JWT configuration
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-please-change-this-in-production}
+  access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:3600000}  # 1 hour in milliseconds
+  refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:604800000}  # 7 days in milliseconds
+
+# AWS S3 configuration
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET:story-game-bucket}
+    region: ${AWS_S3_REGION:ap-northeast-2}
+  credentials:
+    access-key: ${AWS_ACCESS_KEY:your-access-key}
+    secret-key: ${AWS_SECRET_KEY:your-secret-key}
+
+# File Upload configuration
+app:
+  file-upload:
+    max-size:
+      story: 10485760    # 10MB in bytes
+      image: 5242880     # 5MB in bytes
+      video: 104857600   # 100MB in bytes
+    allowed-extensions:
+      story: txt,pdf,doc,docx
+      image: jpg,jpeg,png,gif,webp
+      video: mp4,avi,mov,wmv,flv,mkv
+    presigned-url-expiration: 900  # 15 minutes in seconds
+
+# Logging
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.story.game: ${LOG_LEVEL:INFO}
