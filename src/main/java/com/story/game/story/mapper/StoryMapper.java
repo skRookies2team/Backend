@@ -150,8 +150,7 @@ public class StoryMapper {
             // A more robust implementation might involve matching choices to children via an ID.
             StoryChoiceDto choiceDto;
             if (childDto.getChoices() != null && !childDto.getChoices().isEmpty()) {
-                Object firstChoiceObj = childDto.getChoices().values().iterator().next();
-                choiceDto = objectMapper.convertValue(firstChoiceObj, StoryChoiceDto.class);
+                choiceDto = childDto.getChoices().get(0);
             } else {
                 choiceDto = StoryChoiceDto.builder().text("Continue").build();
             }
@@ -222,9 +221,7 @@ public class StoryMapper {
 
         if (dto.getChoices() != null && dto.getChildren() != null) {
             List<StoryNodeDto> childrenDtos = dto.getChildren();
-            List<StoryChoiceDto> choicesDtos = dto.getChoices().values().stream()
-                    .map(obj -> objectMapper.convertValue(obj, StoryChoiceDto.class))
-                    .collect(Collectors.toList());
+            List<StoryChoiceDto> choicesDtos = dto.getChoices();
 
             for (int i = 0; i < choicesDtos.size(); i++) {
                 StoryChoiceDto choiceDto = choicesDtos.get(i);
@@ -314,7 +311,7 @@ public class StoryMapper {
                     .depth(node.getDepth())
                     .text(node.getText())
                     .nodeType(node.getNodeType())
-                    .choices(Collections.emptyMap())
+                    .choices(Collections.emptyList())
                     .children(Collections.emptyList())
                     .build();
         }
@@ -332,12 +329,10 @@ public class StoryMapper {
                 .details(details)
                 .choices(
                         node.getOutgoingChoices() != null ?
-                        java.util.stream.IntStream.range(0, node.getOutgoingChoices().size())
-                                .boxed()
-                                .collect(java.util.stream.Collectors.toMap(
-                                        String::valueOf,
-                                        i -> toStoryChoiceDto(node.getOutgoingChoices().get(i))
-                                )) : java.util.Collections.emptyMap()
+                        node.getOutgoingChoices().stream()
+                                .map(this::toStoryChoiceDto)
+                                .collect(Collectors.toList())
+                        : Collections.emptyList()
                 );
 
         // Recursively map children with visited nodes tracking
