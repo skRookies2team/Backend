@@ -15,6 +15,8 @@ import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.gameplay.dto.GameStateResponseDto;
 import com.story.game.gameplay.entity.GameSession;
 import com.story.game.gameplay.repository.GameSessionRepository;
+import com.story.game.rag.dto.GameProgressUpdateRequestDto;
+import com.story.game.rag.service.RagService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.entity.EpisodeEnding;
 import com.story.game.story.entity.StoryChoice;
@@ -62,6 +64,7 @@ public class GameService {
 
     // [SpEL] 파서 인스턴스 생성
     private final ExpressionParser parser = new SpelExpressionParser();
+    private final RagService ragService;
 
     @Transactional
     public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
@@ -203,6 +206,42 @@ public class GameService {
             }
 
             gameSessionRepository.save(session);
+
+
+            // NPC AI에 게임 진행 상황 업데이트 (비동기, 실패해도 게임 진행에 영향 없음)
+
+            try {
+
+                String progressContent = buildProgressContent(selectedChoice, currentNode, nextNode);
+
+                GameProgressUpdateRequestDto updateRequest = GameProgressUpdateRequestDto.builder()
+
+                        .characterId(session.getId())  // 세션 ID를 character ID로 사용
+
+                        .content(progressContent)
+
+                        .metadata(Map.of(
+
+                                "nodeId", nextNode.getId().toString(),
+
+                                "depth", nextNode.getDepth(),
+
+                                "episodeId", nextNode.getEpisode().getId().toString(),
+
+                                "timestamp", System.currentTimeMillis()
+
+                        ))
+
+                        .build();
+
+                ragService.updateGameProgress(updateRequest);
+
+            } catch (Exception e) {
+
+                log.warn("Failed to update game progress to NPC AI (non-critical): {}", e.getMessage());
+
+            }
+
 
             List<StoryChoice> nextNodeChoices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(nextNode);
             if (nextNodeChoices.isEmpty()) {
@@ -545,5 +584,40 @@ public class GameService {
                 .gaugeDefinitions(gaugeDefinitions)
                 .completedEpisodesCount(session.getCompletedEpisodes() != null ? session.getCompletedEpisodes().size() : 0)
                 .build();
+    }
+
+
+    /**
+     * 게임 진행 상황을 텍스트로 변환
+     */
+    private String buildProgressContent(StoryChoice choice, StoryNode fromNode, StoryNode toNode) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("=== 게임 진행 상황 ===").append("\n\n");
+
+        // 이전 노드
+        sb.append("이전 상황:\n");
+        sb.append(fromNode.getText()).append("\n\n");
+
+        // 플레이어 선택
+        sb.append("플레이어의 선택:\n");
+        sb.append("'").append(choice.getText()).append("'").append("\n\n");
+
+        // 즉각 반응
+        if (choice.getImmediateReaction() != null && !choice.getImmediateReaction().isEmpty()) {
+            sb.append("선택 직후 반응:\n");
+            sb.append(choice.getImmediateReaction()).append("\n\n");
+        }
+
+        // 현재 노드
+        sb.append("현재 상황:\n");
+        sb.append(toNode.getText()).append("\n");
+
+        // 상황 정보
+        if (toNode.getSituation() != null && !toNode.getSituation().isEmpty()) {
+            sb.append("\n상세 상황: ").append(toNode.getSituation());
+        }
+
+        return sb.toString();
     }
 }

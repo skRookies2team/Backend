@@ -3,6 +3,7 @@ package com.story.game.rag.service;
 import com.story.game.rag.dto.CharacterIndexRequestDto;
 import com.story.game.rag.dto.ChatMessageRequestDto;
 import com.story.game.rag.dto.ChatMessageResponseDto;
+import com.story.game.rag.dto.GameProgressUpdateRequestDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -64,6 +65,31 @@ public class RagService {
         } catch (Exception e) {
             log.error("Failed to send chat message", e);
             throw new RuntimeException("Failed to send chat message: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 게임 진행 상황을 NPC AI에 업데이트
+     */
+    public Boolean updateGameProgress(GameProgressUpdateRequestDto request) {
+        log.info("=== Update Game Progress ===");
+        log.info("Character: {}", request.getCharacterId());
+
+        try {
+            Boolean result = relayServerWebClient.post()
+                    .uri("/ai/chat/update-progress")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(Boolean.class)
+                    .block();
+
+            log.info("Game progress update result: {}", result);
+            return result != null && result;
+
+        } catch (Exception e) {
+            log.warn("Failed to update game progress (non-critical): {}", e.getMessage());
+            // 게임 진행 상황 업데이트 실패는 치명적이지 않으므로 경고만 로그
+            return false;
         }
     }
 }
