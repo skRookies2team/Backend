@@ -23,6 +23,11 @@ public class SubtreeRegenerationRequestDto {
     private List<String> previousChoices;
     private List<String> selectedGaugeIds;
 
+    // Cached analysis data for performance optimization
+    private String summary;
+    private String charactersJson;
+    private String gaugesJson;
+
     @Getter
     @Builder
     @NoArgsConstructor
