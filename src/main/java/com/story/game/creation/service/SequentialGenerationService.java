@@ -242,7 +242,7 @@ public class SequentialGenerationService {
                 storyCreation.setStoryDataId(storyData.getId());
 
                 // 스토리 완성 시 모든 캐릭터를 NPC AI에 자동 학습
-                indexCharactersToNpc(storyCreation);
+                indexCharactersToNpc(storyCreation, storyData);
             } else {
                 storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
                 storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");
@@ -365,7 +365,7 @@ public class SequentialGenerationService {
     /**
      * 스토리의 모든 캐릭터를 NPC AI에 자동으로 인덱싱
      */
-    private void indexCharactersToNpc(StoryCreation storyCreation) {
+    private void indexCharactersToNpc(StoryCreation storyCreation, StoryData storyData) {
         try {
             // 캐릭터 목록 로드
             if (storyCreation.getCharactersJson() == null || storyCreation.getCharactersJson().isBlank()) {
@@ -386,35 +386,50 @@ public class SequentialGenerationService {
             log.info("=== Auto-indexing {} characters to NPC AI ===", characters.size());
 
             // 각 캐릭터를 NPC AI에 인덱싱
+            // Combine all characters into one description
+            StringBuilder combinedDescription = new StringBuilder();
+            
             for (CharacterDto character : characters) {
-                try {
-                    CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
-                        .characterId(storyCreation.getId() + "_" + character.getName())
-                        .name(character.getName())
-                        .description(character.getDescription())
-                        .personality(null)  // CharacterDto에는 personality 없음
-                        .background(null)   // CharacterDto에는 background 없음
-                        .dialogueSamples(null)  // CharacterDto에는 dialogueSamples 없음
-                        .relationships(character.getRelationships() != null ? 
-                            character.getRelationships().stream()
-                                .collect(java.util.stream.Collectors.toMap(
-                                    r -> r, 
-                                    r -> "관계"
-                                )) : null)
-                        .additionalInfo(character.getAliases() != null ? 
-                            java.util.Map.of("aliases", character.getAliases()) : null)
-                        .build();
-
-                    Boolean result = ragService.indexCharacter(indexRequest);
-                    
-                    if (result) {
-                        log.info("✅ Character indexed: {}", character.getName());
-                    } else {
-                        log.warn("⚠️ Character indexing failed: {}", character.getName());
+                if (character.getName() != null) {
+                    combinedDescription.append(character.getName());
+                    if (character.getDescription() != null) {
+                        combinedDescription.append(": ").append(character.getDescription());
                     }
-                } catch (Exception e) {
-                    log.error("Failed to index character {}: {}", character.getName(), e.getMessage());
+                    combinedDescription.append(System.lineSeparator());
                 }
+            }
+            
+            if (storyCreation.getSummary() != null) {
+                combinedDescription.append(System.lineSeparator()).append(storyCreation.getSummary());
+            }
+            
+            // Call indexCharacter ONCE with all character info
+            try {
+                CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
+                    .characterId(storyData.getId().toString())
+                    .name(storyCreation.getTitle())
+                    .description(combinedDescription.toString())
+                    .personality(null)
+                    .background(null)
+                    .dialogueSamples(null)
+                    .relationships(null)
+                    .additionalInfo(java.util.Map.of(
+                        "storyId", storyCreation.getId().toString(),
+                        "storyDataId", storyData.getId().toString(),
+                        "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
+                        "characterCount", String.valueOf(characters.size())
+                    ))
+                    .build();
+
+                Boolean result = ragService.indexCharacter(indexRequest);
+                
+                if (result) {
+                    log.info("Characters indexed successfully: {}", storyData.getId());
+                } else {
+                    log.warn("Character indexing failed: {}", storyData.getId());
+                }
+            } catch (Exception e) {
+                log.error("Failed to index characters: {}", e.getMessage());
             }
 
             log.info("=== Character indexing completed ===");

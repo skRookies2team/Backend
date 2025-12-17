@@ -216,20 +216,16 @@ public class GameService {
 
                 GameProgressUpdateRequestDto updateRequest = GameProgressUpdateRequestDto.builder()
 
-                        .characterId(session.getId())  // 세션 ID를 character ID로 사용
+                        .characterId(session.getStoryDataId().toString())  // StoryData ID를 session_id로 사용
 
                         .content(progressContent)
 
                         .metadata(Map.of(
-
                                 "nodeId", nextNode.getId().toString(),
-
                                 "depth", nextNode.getDepth(),
-
                                 "episodeId", nextNode.getEpisode().getId().toString(),
-
+                                "gameSessionId", session.getId(),  // 게임 세션 ID (참고용)
                                 "timestamp", System.currentTimeMillis()
-
                         ))
 
                         .build();
