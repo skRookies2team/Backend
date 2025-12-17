@@ -13,6 +13,8 @@ import com.story.game.creation.dto.TaskStartResponseDto;
 import com.story.game.creation.entity.StoryCreation;
 import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.rag.dto.CharacterIndexRequestDto;
+import com.story.game.rag.service.RagService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.mapper.StoryMapper;
 import com.story.game.story.repository.EpisodeEndingRepository;
@@ -49,6 +51,7 @@ public class SequentialGenerationService {
     private final ObjectMapper objectMapper;
     private final StoryMapper storyMapper;
     private final S3Service s3Service;
+    private final RagService ragService;
     private final SequentialGenerationService self;
 
     public SequentialGenerationService(
@@ -61,6 +64,7 @@ public class SequentialGenerationService {
             ObjectMapper objectMapper,
             StoryMapper storyMapper,
             S3Service s3Service,
+            RagService ragService,
             @org.springframework.context.annotation.Lazy SequentialGenerationService self) {
         this.storyCreationRepository = storyCreationRepository;
         this.storyDataRepository = storyDataRepository;
@@ -71,6 +75,7 @@ public class SequentialGenerationService {
         this.objectMapper = objectMapper;
         this.storyMapper = storyMapper;
         this.s3Service = s3Service;
+        this.ragService = ragService;
         this.self = self;
     }
 
@@ -235,6 +240,9 @@ public class SequentialGenerationService {
                     .build();
                 storyDataRepository.save(storyData);
                 storyCreation.setStoryDataId(storyData.getId());
+
+                // 스토리 완성 시 모든 캐릭터를 NPC AI에 자동 학습
+                indexCharactersToNpc(storyCreation);
             } else {
                 storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
                 storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");
@@ -353,4 +361,69 @@ public class SequentialGenerationService {
                 .build();
         generationTasks.put(taskId, progressDto);
     }
+
+    /**
+     * 스토리의 모든 캐릭터를 NPC AI에 자동으로 인덱싱
+     */
+    private void indexCharactersToNpc(StoryCreation storyCreation) {
+        try {
+            // 캐릭터 목록 로드
+            if (storyCreation.getCharactersJson() == null || storyCreation.getCharactersJson().isBlank()) {
+                log.info("No characters to index for story: {}", storyCreation.getId());
+                return;
+            }
+
+            List<CharacterDto> characters = objectMapper.readValue(
+                storyCreation.getCharactersJson(), 
+                new TypeReference<List<CharacterDto>>() {}
+            );
+
+            if (characters.isEmpty()) {
+                log.info("No characters found in story: {}", storyCreation.getId());
+                return;
+            }
+
+            log.info("=== Auto-indexing {} characters to NPC AI ===", characters.size());
+
+            // 각 캐릭터를 NPC AI에 인덱싱
+            for (CharacterDto character : characters) {
+                try {
+                    CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
+                        .characterId(storyCreation.getId() + "_" + character.getName())
+                        .name(character.getName())
+                        .description(character.getDescription())
+                        .personality(null)  // CharacterDto에는 personality 없음
+                        .background(null)   // CharacterDto에는 background 없음
+                        .dialogueSamples(null)  // CharacterDto에는 dialogueSamples 없음
+                        .relationships(character.getRelationships() != null ? 
+                            character.getRelationships().stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                    r -> r, 
+                                    r -> "관계"
+                                )) : null)
+                        .additionalInfo(character.getAliases() != null ? 
+                            java.util.Map.of("aliases", character.getAliases()) : null)
+                        .build();
+
+                    Boolean result = ragService.indexCharacter(indexRequest);
+                    
+                    if (result) {
+                        log.info("✅ Character indexed: {}", character.getName());
+                    } else {
+                        log.warn("⚠️ Character indexing failed: {}", character.getName());
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to index character {}: {}", character.getName(), e.getMessage());
+                }
+            }
+
+            log.info("=== Character indexing completed ===");
+
+        } catch (Exception e) {
+            log.error("Failed to auto-index characters for story {}: {}", 
+                storyCreation.getId(), e.getMessage());
+            // 캐릭터 인덱싱 실패는 치명적이지 않으므로 예외를 throw하지 않음
+        }
+    }
+
 }
