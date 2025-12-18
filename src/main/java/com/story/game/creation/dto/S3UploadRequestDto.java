@@ -12,6 +12,8 @@ public class S3UploadRequestDto {
     @NotBlank(message = "Title is required")
     private String title;
 
+    private String genre;
+
     private String description;
 
     @NotBlank(message = "File key is required")

@@ -641,6 +641,7 @@ public class StoryManagementService {
         StoryCreation storyCreation = StoryCreation.builder()
                 .id(storyId)
                 .title(request.getTitle())
+                .genre(request.getGenre())
                 .novelText("")
                 .s3FileKey(request.getFileKey())
                 .status(StoryCreation.CreationStatus.ANALYZING)
@@ -656,6 +657,7 @@ public class StoryManagementService {
         return StoryUploadResponseDto.builder()
                 .storyId(storyCreation.getId())
                 .title(storyCreation.getTitle())
+                .genre(storyCreation.getGenre())
                 .status(storyCreation.getStatus())
                 .createdAt(storyCreation.getCreatedAt())
                 .build();

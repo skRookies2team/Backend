@@ -9,7 +9,8 @@
       "Bash(./gradlew build:*)",
       "Bash(git reset:*)",
       "WebFetch(domain:github.com)",
-      "Bash(./gradlew bootRun:*)"
+      "Bash(./gradlew bootRun:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

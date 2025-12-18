@@ -4,6 +4,9 @@ import com.story.game.achievement.entity.Achievement;
 import com.story.game.auth.entity.User;
 import com.story.game.achievement.entity.UserAchievement;
 import com.story.game.achievement.repository.AchievementRepository;
+import com.story.game.community.repository.PostRepository;
+import com.story.game.creation.entity.StoryCreation;
+import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.achievement.repository.UserAchievementRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,8 @@ public class AchievementService {
     private final AchievementRepository achievementRepository;
     private final UserAchievementRepository userAchievementRepository;
     private final GameSessionRepository gameSessionRepository;
+    private final StoryCreationRepository storyCreationRepository;
+    private final PostRepository postRepository;
 
     // 사용자의 업적 진행 상황 체크 및 업데이트
     @Transactional
@@ -90,10 +95,11 @@ public class AchievementService {
     // 업적 타입별 현재 값 계산
     private Integer calculateCurrentValue(User user, Achievement achievement) {
         return switch (achievement.getType()) {
-            case STORY_COMPLETE -> (int) gameSessionRepository.countByUserAndIsCompleted(user, true);
-            case ENDING_UNLOCK -> (int) gameSessionRepository.countDistinctFinalEndingsByUser(user);
             case PLAY_COUNT -> (int) gameSessionRepository.countByUser(user);
-            default -> 0;
+            case COMPLETION_COUNT -> (int) gameSessionRepository.countByUserAndIsCompleted(user, true);
+            case ENDING_COUNT -> (int) gameSessionRepository.countDistinctFinalEndingsByUser(user);
+            case CREATION_COUNT -> (int) storyCreationRepository.countByUserAndStatus(user, StoryCreation.CreationStatus.COMPLETED);
+            case POST_COUNT -> (int) postRepository.countByAuthor(user);
         };
     }
 }

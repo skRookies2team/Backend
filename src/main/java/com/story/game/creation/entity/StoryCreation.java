@@ -1,5 +1,6 @@
 package com.story.game.creation.entity;
 
+import com.story.game.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -20,6 +21,10 @@ public class StoryCreation {
     @Id
     @Column(length = 50)
     private String id;  // story_123 형식
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;  // 스토리 생성자
 
     @Column(nullable = false)
     private String title;

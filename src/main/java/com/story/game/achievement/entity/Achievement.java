@@ -39,10 +39,10 @@ public class Achievement {
     private Integer points = 0; // 업적 포인트
 
     public enum AchievementType {
-        STORY_COMPLETE,     // 스토리 완료
-        ENDING_UNLOCK,      // 엔딩 달성
         PLAY_COUNT,         // 플레이 횟수
-        COMMUNITY_ACTIVE,   // 커뮤니티 활동
-        SPECIAL             // 특별 업적
+        COMPLETION_COUNT,   // 완료 횟수
+        ENDING_COUNT,       // 엔딩 횟수
+        CREATION_COUNT,     // 창작 횟수
+        POST_COUNT          // 게시글 수
     }
 }
