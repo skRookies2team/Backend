@@ -29,6 +29,9 @@ public class NovelAnalysisRequestDto {
     @JsonProperty("result_file_key")
     private String resultFileKey;  // AI 서버가 업로드할 파일의 키
 
+    @JsonProperty("novel_download_url")
+    private String novelDownloadUrl;  // RAG 서버가 원본 소설을 다운로드할 Pre-signed URL
+
     // S3 방식인지 확인
     public boolean isS3Mode() {
         return fileKey != null && !fileKey.isBlank();

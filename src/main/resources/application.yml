@@ -46,6 +46,11 @@ relay-server:
   url: ${RELAY_SERVER_URL:http://localhost:8081}
   timeout: ${RELAY_SERVER_TIMEOUT:600000}  # 10 minutes in milliseconds (AI 분석/생성 시간 고려)
 
+# RAG server configuration (직접 통신)
+rag-server:
+  url: ${RAG_SERVER_URL:http://localhost:8002}
+  timeout: ${RAG_SERVER_TIMEOUT:30000}  # 30 seconds in milliseconds
+
 # JWT configuration
 jwt:
   secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-please-change-this-in-production}

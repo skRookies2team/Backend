@@ -202,6 +202,16 @@ public class GameService {
             session.setCurrentNodeId(nextNode.getId().toString());
             session.getVisitedNodes().add(nextNode.getId().toString());
 
+            // 다음 선택지로 넘어갈 때 현재 스토리의 대화 내역만 삭제
+            try {
+                String storyId = session.getStoryCreationId();
+                ragService.deleteConversationsByStoryId(user.getUsername(), storyId);
+                log.info("Deleted conversations for user: {} and story: {} on choice selection",
+                        user.getUsername(), storyId);
+            } catch (Exception e) {
+                log.warn("Failed to delete conversations (non-critical): {}", e.getMessage());
+            }
+
             if (nextNode.getNodeType() != null) {
                 String nodeType = nextNode.getNodeType().toUpperCase();
                 if (nodeType.equals("ENDING")) {

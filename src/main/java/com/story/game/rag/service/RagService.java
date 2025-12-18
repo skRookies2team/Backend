@@ -2,6 +2,8 @@ package com.story.game.rag.service;
 
 import com.story.game.auth.entity.User;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.creation.entity.StoryCreation;
+import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.rag.dto.*;
 import com.story.game.rag.entity.ChatConversation;
 import com.story.game.rag.entity.ChatMessage;
@@ -22,8 +24,38 @@ import java.util.stream.Collectors;
 public class RagService {
 
     private final WebClient relayServerWebClient;
+    private final WebClient ragServerWebClient;
     private final ChatConversationRepository chatConversationRepository;
     private final UserRepository userRepository;
+    private final StoryCreationRepository storyCreationRepository;
+
+    /**
+     * 소설 원본을 RAG 시스템에 인덱싱
+     * 실패 시 false 반환 (non-critical)
+     */
+    public Boolean indexNovel(NovelIndexRequestDto request) {
+        log.info("=== Index Novel to RAG ===");
+        log.info("Story: {} ({})", request.getTitle(), request.getStoryId());
+        log.info("File key: {}", request.getFileKey());
+
+        try {
+            Boolean result = ragServerWebClient.post()
+                    .uri("/index-novel")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(Boolean.class)
+                    .block();
+
+            log.info("Novel indexing result: {}", result);
+            return result != null && result;
+
+        } catch (Exception e) {
+            log.warn("Failed to index novel to RAG (non-critical): {}", request.getStoryId(), e);
+            // 소설 인덱싱 실패는 치명적이지 않으므로 경고만 로그
+            // RAG 기능은 작동하지 않지만 스토리 생성은 계속 진행
+            return false;
+        }
+    }
 
     /**
      * 캐릭터를 RAG 시스템에 인덱싱
@@ -69,9 +101,25 @@ public class RagService {
         ChatConversation conversation = chatConversationRepository
                 .findByUserAndCharacterId(user, request.getCharacterId())
                 .orElseGet(() -> {
+                    // characterId는 실제로 storyId (StoryManagementService에서 storyId를 characterId로 사용)
+                    String storyId = request.getCharacterId();
+
+                    // StoryCreation 조회하여 제목 가져오기
+                    String characterName = null;
+                    try {
+                        StoryCreation storyCreation = storyCreationRepository.findById(storyId).orElse(null);
+                        if (storyCreation != null) {
+                            characterName = storyCreation.getTitle();
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to fetch story title for characterId: {}", storyId, e);
+                    }
+
                     ChatConversation newConv = ChatConversation.builder()
                             .user(user)
                             .characterId(request.getCharacterId())
+                            .characterName(characterName)
+                            .storyId(storyId)
                             .build();
                     return chatConversationRepository.save(newConv);
                 });
@@ -200,6 +248,66 @@ public class RagService {
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 특정 캐릭터와의 대화 내역 삭제
+     */
+    @Transactional
+    public void deleteConversation(String username, String characterId) {
+        log.info("=== Delete Conversation ===");
+        log.info("Username: {}, Character: {}", username, characterId);
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        ChatConversation conversation = chatConversationRepository
+                .findByUserAndCharacterId(user, characterId)
+                .orElse(null);
+
+        if (conversation != null) {
+            chatConversationRepository.delete(conversation);
+            log.info("Conversation deleted successfully: conversationId={}", conversation.getId());
+        } else {
+            log.info("No conversation found to delete");
+        }
+    }
+
+    /**
+     * 특정 스토리의 대화 내역 삭제
+     */
+    @Transactional
+    public void deleteConversationsByStoryId(String username, String storyId) {
+        log.info("=== Delete Conversations by Story ID ===");
+        log.info("Username: {}, StoryId: {}", username, storyId);
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        List<ChatConversation> conversations = chatConversationRepository
+                .findByUserAndStoryIdOrderByUpdatedAtDesc(user, storyId);
+        int count = conversations.size();
+
+        chatConversationRepository.deleteAll(conversations);
+        log.info("Deleted {} conversations for story: {}", count, storyId);
+    }
+
+    /**
+     * 사용자의 모든 대화 내역 삭제
+     */
+    @Transactional
+    public void deleteAllConversations(String username) {
+        log.info("=== Delete All Conversations ===");
+        log.info("Username: {}", username);
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        List<ChatConversation> conversations = chatConversationRepository.findByUserOrderByUpdatedAtDesc(user);
+        int count = conversations.size();
+
+        chatConversationRepository.deleteAll(conversations);
+        log.info("Deleted {} conversations", count);
     }
 
     /**

@@ -10,6 +10,7 @@ import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.rag.dto.CharacterIndexRequestDto;
+import com.story.game.rag.dto.NovelIndexRequestDto;
 import com.story.game.rag.service.RagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,8 +79,33 @@ public class StoryManagementService {
                 novelText == null,
                 novelText != null ? novelText.length() : 0);
 
+            // Upload novel text to S3 for RAG access
+            String novelFileKey = "novels/original/" + storyId + ".txt";
+            s3Service.uploadFile(novelFileKey, novelText);
+            log.info("Uploaded original novel to S3: {}", novelFileKey);
+
+            // Generate pre-signed download URL for RAG server
+            String novelDownloadUrl = s3Service.generatePresignedDownloadUrl(novelFileKey);
+            log.info("Generated Pre-signed download URL for RAG server: {}", novelFileKey);
+
+            // Index novel to RAG server (병렬 처리 - 실패해도 분석 계속 진행)
+            StoryCreation storyCreationForRag = storyCreationRepository.findById(storyId)
+                    .orElseThrow(() -> new RuntimeException("Story not found"));
+            NovelIndexRequestDto ragRequest = NovelIndexRequestDto.builder()
+                    .storyId(storyId)
+                    .title(storyCreationForRag.getTitle())
+                    .genre(storyCreationForRag.getGenre())
+                    .fileKey(novelFileKey)
+                    .bucket(bucketName)
+                    .novelDownloadUrl(novelDownloadUrl)
+                    .build();
+            ragService.indexNovel(ragRequest);
+
             NovelAnalysisRequestDto request = NovelAnalysisRequestDto.builder()
                     .novelText(novelText)
+                    .fileKey(novelFileKey)  // S3 파일 키도 함께 전달
+                    .bucket(bucketName)
+                    .novelDownloadUrl(novelDownloadUrl)  // RAG가 원본 소설을 다운로드할 URL
                     .build();
 
             log.info("Created NovelAnalysisRequestDto - novelText field is null: {}, length: {}",
@@ -111,6 +137,7 @@ public class StoryManagementService {
             storyCreation.setSummary(response.getSummary());
             storyCreation.setCharactersJson(objectMapper.writeValueAsString(response.getCharacters()));
             storyCreation.setGaugesJson(objectMapper.writeValueAsString(response.getGauges()));
+            storyCreation.setS3FileKey(novelFileKey);  // Save original novel S3 key
             // Note: finalEndings will be generated after user selects gauges (in selectGauges method)
             storyCreation.setStatus(StoryCreation.CreationStatus.GAUGES_READY);
             storyCreation.setCurrentPhase("GAUGES_READY");
@@ -668,15 +695,34 @@ public class StoryManagementService {
         try {
             log.info("Starting AI analysis from S3 for story: {}, bucket: {}, fileKey: {}", storyId, bucketName, fileKey);
 
+            // Generate pre-signed URL for AI server to upload analysis result
             String resultFileKey = "analysis/" + UUID.randomUUID().toString() + ".json";
             String s3UploadUrl = s3Service.generatePresignedUploadUrl(resultFileKey).getUrl();
             log.info("Generated Pre-signed URL for AI server to upload analysis result: {}", resultFileKey);
+
+            // Generate pre-signed download URL for RAG server to access original novel
+            String novelDownloadUrl = s3Service.generatePresignedDownloadUrl(fileKey);
+            log.info("Generated Pre-signed download URL for RAG server to access original novel: {}", fileKey);
+
+            // Index novel to RAG server (병렬 처리 - 실패해도 분석 계속 진행)
+            StoryCreation storyCreationForRag = storyCreationRepository.findById(storyId)
+                    .orElseThrow(() -> new RuntimeException("Story not found"));
+            NovelIndexRequestDto ragRequest = NovelIndexRequestDto.builder()
+                    .storyId(storyId)
+                    .title(storyCreationForRag.getTitle())
+                    .genre(storyCreationForRag.getGenre())
+                    .fileKey(fileKey)
+                    .bucket(bucketName)
+                    .novelDownloadUrl(novelDownloadUrl)
+                    .build();
+            ragService.indexNovel(ragRequest);
 
             NovelAnalysisRequestDto aiRequest = NovelAnalysisRequestDto.builder()
                     .fileKey(fileKey)
                     .bucket(bucketName)
                     .s3UploadUrl(s3UploadUrl)
                     .resultFileKey(resultFileKey)
+                    .novelDownloadUrl(novelDownloadUrl)  // RAG가 원본 소설을 다운로드할 URL
                     .build();
 
             log.info("Calling relay-server /ai/analyze-from-s3 endpoint for S3 mode");

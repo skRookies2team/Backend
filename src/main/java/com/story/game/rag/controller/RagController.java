@@ -93,4 +93,35 @@ public class RagController {
 
         return ResponseEntity.ok(response);
     }
+
+    @Operation(
+            summary = "특정 캐릭터와의 대화 내역 삭제",
+            description = "게임 선택지 이동 시 특정 캐릭터와의 대화 내역을 삭제합니다."
+    )
+    @DeleteMapping("/conversations/{characterId}")
+    public ResponseEntity<Void> deleteConversation(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String characterId) {
+        log.info("=== Delete Conversation ===");
+        log.info("Username: {}, Character: {}", userDetails.getUsername(), characterId);
+
+        ragService.deleteConversation(userDetails.getUsername(), characterId);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
+            summary = "모든 대화 내역 삭제",
+            description = "사용자의 모든 캐릭터 대화 내역을 삭제합니다."
+    )
+    @DeleteMapping("/conversations")
+    public ResponseEntity<Void> deleteAllConversations(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        log.info("=== Delete All Conversations ===");
+        log.info("Username: {}", userDetails.getUsername());
+
+        ragService.deleteAllConversations(userDetails.getUsername());
+
+        return ResponseEntity.noContent().build();
+    }
 }
