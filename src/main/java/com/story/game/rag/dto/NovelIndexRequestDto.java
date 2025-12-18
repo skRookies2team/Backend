@@ -21,9 +21,6 @@ public class NovelIndexRequestDto {
     @JsonProperty("title")
     private String title;
 
-    @JsonProperty("genre")
-    private String genre;
-
     @NotBlank(message = "File key is required")
     @JsonProperty("file_key")
     private String fileKey;
@@ -31,8 +28,4 @@ public class NovelIndexRequestDto {
     @NotBlank(message = "Bucket is required")
     @JsonProperty("bucket")
     private String bucket;
-
-    @NotBlank(message = "Novel download URL is required")
-    @JsonProperty("novel_download_url")
-    private String novelDownloadUrl;
 }

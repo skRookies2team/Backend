@@ -27,14 +27,8 @@ public class WebClientConfig {
     @Value("${relay-server.url:http://localhost:8081}")
     private String relayServerUrl;
 
-    @Value("${relay-server.timeout:30000}") // 30초 기본값
+    @Value("${relay-server.timeout:600000}") // 10분 기본값 (AI 분석/생성 시간 고려)
     private int relayTimeout;
-
-    @Value("${rag-server.url:http://localhost:8002}")
-    private String ragServerUrl;
-
-    @Value("${rag-server.timeout:30000}") // 30초 기본값
-    private int ragTimeout;
 
     @Bean
     public WebClient aiServerWebClient() {
@@ -63,22 +57,6 @@ public class WebClientConfig {
 
         return WebClient.builder()
                 .baseUrl(relayServerUrl)
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
-    }
-
-    @Bean
-    public WebClient ragServerWebClient() {
-        HttpClient httpClient = HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, ragTimeout)
-                .responseTimeout(Duration.ofMillis(ragTimeout))
-                .doOnConnected(conn ->
-                        conn.addHandlerLast(new ReadTimeoutHandler(ragTimeout, TimeUnit.MILLISECONDS))
-                            .addHandlerLast(new WriteTimeoutHandler(ragTimeout, TimeUnit.MILLISECONDS)));
-
-        return WebClient.builder()
-                .baseUrl(ragServerUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();

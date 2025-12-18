@@ -13,11 +13,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,45 +26,41 @@ import java.util.stream.Collectors;
 public class RagService {
 
     private final WebClient relayServerWebClient;
-    private final WebClient ragServerWebClient;
     private final ChatConversationRepository chatConversationRepository;
     private final UserRepository userRepository;
     private final StoryCreationRepository storyCreationRepository;
 
     /**
      * 소설 원본을 RAG 시스템에 인덱싱
+     * relay-server를 경유하여 RAG 서버에 전달
      * 실패 시 false 반환 (non-critical)
      */
     public Boolean indexNovel(NovelIndexRequestDto request) {
-        log.info("=== Index Novel to RAG ===");
+        log.info("=== Index Novel to RAG (via relay-server) ===");
         log.info("Story: {} ({})", request.getTitle(), request.getStoryId());
         log.info("File key: {}", request.getFileKey());
 
         try {
-            // AI-NPC의 /api/ai/train-from-s3 형식에 맞게 변환
-            Map<String, String> trainRequest = new HashMap<>();
-            trainRequest.put("session_id", request.getStoryId());
-            trainRequest.put("file_key", request.getFileKey());
-            trainRequest.put("bucket", request.getBucket());
-            trainRequest.put("character_name", request.getTitle());  // 스토리 제목을 캐릭터명으로 사용
-
-            Map<String, Object> response = ragServerWebClient.post()
-                    .uri("/api/ai/train-from-s3")
-                    .bodyValue(trainRequest)
+            Boolean result = relayServerWebClient.post()
+                    .uri("/ai/chat/index-novel")
+                    .bodyValue(request)
                     .retrieve()
-                    .bodyToMono(Map.class)
+                    .bodyToMono(Boolean.class)
                     .block();
 
-            String status = response != null ? (String) response.get("status") : null;
-            boolean success = "trained".equals(status);
+            log.info("Novel indexing result: {}", result);
+            return result != null && result;
 
-            log.info("Novel indexing result: {}, chunks: {}", success, response != null ? response.get("chunks_created") : 0);
-            return success;
-
+        } catch (WebClientResponseException e) {
+            log.warn("RAG server returned error while indexing novel (non-critical): {} - Status: {}, Body: {}",
+                    request.getStoryId(), e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
+        } catch (WebClientRequestException e) {
+            log.warn("Failed to connect to RAG server while indexing novel (non-critical): {} - {}",
+                    request.getStoryId(), e.getMessage());
+            return false;
         } catch (Exception e) {
-            log.warn("Failed to index novel to RAG (non-critical): {}", request.getStoryId(), e);
-            // 소설 인덱싱 실패는 치명적이지 않으므로 경고만 로그
-            // RAG 기능은 작동하지 않지만 스토리 생성은 계속 진행
+            log.warn("Unexpected error while indexing novel to RAG (non-critical): {}", request.getStoryId(), e);
             return false;
         }
     }
@@ -88,10 +84,16 @@ public class RagService {
             log.info("Character indexing result: {}", result);
             return result != null && result;
 
+        } catch (WebClientResponseException e) {
+            log.warn("Relay server returned error while indexing character (non-critical): {} - Status: {}, Body: {}",
+                    request.getCharacterId(), e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
+        } catch (WebClientRequestException e) {
+            log.warn("Failed to connect to relay server while indexing character (non-critical): {} - {}",
+                    request.getCharacterId(), e.getMessage());
+            return false;
         } catch (Exception e) {
-            log.warn("Failed to index character (non-critical): {}", request.getCharacterId(), e);
-            // 캐릭터 인덱싱 실패는 치명적이지 않으므로 경고만 로그
-            // 챗봇 기능은 작동하지 않지만 게임 진행은 가능
+            log.warn("Unexpected error while indexing character (non-critical): {}", request.getCharacterId(), e);
             return false;
         }
     }
@@ -177,8 +179,15 @@ public class RagService {
 
             return response;
 
+        } catch (WebClientResponseException e) {
+            log.error("Relay server returned error while sending chat message - Status: {}, Body: {}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Failed to send chat message: RAG server error - " + e.getStatusCode());
+        } catch (WebClientRequestException e) {
+            log.error("Failed to connect to relay server while sending chat message: {}", e.getMessage());
+            throw new RuntimeException("Failed to send chat message: Cannot connect to RAG server");
         } catch (Exception e) {
-            log.error("Failed to send chat message", e);
+            log.error("Unexpected error while sending chat message", e);
             throw new RuntimeException("Failed to send chat message: " + e.getMessage());
         }
     }
@@ -340,9 +349,16 @@ public class RagService {
             log.info("Game progress update result: {}", result);
             return result != null && result;
 
+        } catch (WebClientResponseException e) {
+            log.warn("Relay server returned error while updating game progress (non-critical) - Status: {}, Body: {}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
+        } catch (WebClientRequestException e) {
+            log.warn("Failed to connect to relay server while updating game progress (non-critical): {}",
+                    e.getMessage());
+            return false;
         } catch (Exception e) {
-            log.warn("Failed to update game progress (non-critical): {}", e.getMessage());
-            // 게임 진행 상황 업데이트 실패는 치명적이지 않으므로 경고만 로그
+            log.warn("Unexpected error while updating game progress (non-critical): {}", e.getMessage());
             return false;
         }
     }

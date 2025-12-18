@@ -94,10 +94,8 @@ public class StoryManagementService {
             NovelIndexRequestDto ragRequest = NovelIndexRequestDto.builder()
                     .storyId(storyId)
                     .title(storyCreationForRag.getTitle())
-                    .genre(storyCreationForRag.getGenre())
                     .fileKey(novelFileKey)
                     .bucket(bucketName)
-                    .novelDownloadUrl(novelDownloadUrl)
                     .build();
             ragService.indexNovel(ragRequest);
 
@@ -710,10 +708,8 @@ public class StoryManagementService {
             NovelIndexRequestDto ragRequest = NovelIndexRequestDto.builder()
                     .storyId(storyId)
                     .title(storyCreationForRag.getTitle())
-                    .genre(storyCreationForRag.getGenre())
                     .fileKey(fileKey)
                     .bucket(bucketName)
-                    .novelDownloadUrl(novelDownloadUrl)
                     .build();
             ragService.indexNovel(ragRequest);
 
