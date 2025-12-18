@@ -15,7 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,15 +41,25 @@ public class RagService {
         log.info("File key: {}", request.getFileKey());
 
         try {
-            Boolean result = ragServerWebClient.post()
-                    .uri("/index-novel")
-                    .bodyValue(request)
+            // AI-NPC의 /api/ai/train-from-s3 형식에 맞게 변환
+            Map<String, String> trainRequest = new HashMap<>();
+            trainRequest.put("session_id", request.getStoryId());
+            trainRequest.put("file_key", request.getFileKey());
+            trainRequest.put("bucket", request.getBucket());
+            trainRequest.put("character_name", request.getTitle());  // 스토리 제목을 캐릭터명으로 사용
+
+            Map<String, Object> response = ragServerWebClient.post()
+                    .uri("/api/ai/train-from-s3")
+                    .bodyValue(trainRequest)
                     .retrieve()
-                    .bodyToMono(Boolean.class)
+                    .bodyToMono(Map.class)
                     .block();
 
-            log.info("Novel indexing result: {}", result);
-            return result != null && result;
+            String status = response != null ? (String) response.get("status") : null;
+            boolean success = "trained".equals(status);
+
+            log.info("Novel indexing result: {}, chunks: {}", success, response != null ? response.get("chunks_created") : 0);
+            return success;
 
         } catch (Exception e) {
             log.warn("Failed to index novel to RAG (non-critical): {}", request.getStoryId(), e);
