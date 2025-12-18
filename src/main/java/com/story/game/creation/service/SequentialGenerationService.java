@@ -101,6 +101,12 @@ public class SequentialGenerationService {
             throw new IllegalStateException("Cannot start generation: current status is " + storyCreation.getStatus());
         }
 
+        // 캐릭터 선택 필수 검증
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            throw new IllegalStateException("Characters must be selected before starting story generation. Please select 1-2 characters first.");
+        }
+
         storyCreation.setStatus(StoryCreation.CreationStatus.GENERATING);
         storyCreation.setCurrentPhase("GENERATING_EPISODE_1");
         storyCreation.setTotalEpisodesToGenerate(storyCreation.getNumEpisodes());
@@ -241,8 +247,8 @@ public class SequentialGenerationService {
                 storyDataRepository.save(storyData);
                 storyCreation.setStoryDataId(storyData.getId());
 
-                // 스토리 완성 시 모든 캐릭터를 NPC AI에 자동 학습
-                indexCharactersToNpc(storyCreation, storyData);
+                // 캐릭터 인덱싱은 사용자가 스텝 2에서 캐릭터 선택 시 자동으로 수행됩니다.
+                log.info("Story generation completed. Character indexing was done when user selected characters.");
             } else {
                 storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
                 storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");
@@ -360,85 +366,6 @@ public class SequentialGenerationService {
                 .episodes(episodes)  // 생성된 에피소드 목록 포함
                 .build();
         generationTasks.put(taskId, progressDto);
-    }
-
-    /**
-     * 스토리의 모든 캐릭터를 NPC AI에 자동으로 인덱싱
-     */
-    private void indexCharactersToNpc(StoryCreation storyCreation, StoryData storyData) {
-        try {
-            // 캐릭터 목록 로드
-            if (storyCreation.getCharactersJson() == null || storyCreation.getCharactersJson().isBlank()) {
-                log.info("No characters to index for story: {}", storyCreation.getId());
-                return;
-            }
-
-            List<CharacterDto> characters = objectMapper.readValue(
-                storyCreation.getCharactersJson(), 
-                new TypeReference<List<CharacterDto>>() {}
-            );
-
-            if (characters.isEmpty()) {
-                log.info("No characters found in story: {}", storyCreation.getId());
-                return;
-            }
-
-            log.info("=== Auto-indexing {} characters to NPC AI ===", characters.size());
-
-            // 각 캐릭터를 NPC AI에 인덱싱
-            // Combine all characters into one description
-            StringBuilder combinedDescription = new StringBuilder();
-            
-            for (CharacterDto character : characters) {
-                if (character.getName() != null) {
-                    combinedDescription.append(character.getName());
-                    if (character.getDescription() != null) {
-                        combinedDescription.append(": ").append(character.getDescription());
-                    }
-                    combinedDescription.append(System.lineSeparator());
-                }
-            }
-            
-            if (storyCreation.getSummary() != null) {
-                combinedDescription.append(System.lineSeparator()).append(storyCreation.getSummary());
-            }
-            
-            // Call indexCharacter ONCE with all character info
-            try {
-                CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
-                    .characterId(storyData.getId().toString())
-                    .name(storyCreation.getTitle())
-                    .description(combinedDescription.toString())
-                    .personality(null)
-                    .background(null)
-                    .dialogueSamples(null)
-                    .relationships(null)
-                    .additionalInfo(java.util.Map.of(
-                        "storyId", storyCreation.getId().toString(),
-                        "storyDataId", storyData.getId().toString(),
-                        "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
-                        "characterCount", String.valueOf(characters.size())
-                    ))
-                    .build();
-
-                Boolean result = ragService.indexCharacter(indexRequest);
-                
-                if (result) {
-                    log.info("Characters indexed successfully: {}", storyData.getId());
-                } else {
-                    log.warn("Character indexing failed: {}", storyData.getId());
-                }
-            } catch (Exception e) {
-                log.error("Failed to index characters: {}", e.getMessage());
-            }
-
-            log.info("=== Character indexing completed ===");
-
-        } catch (Exception e) {
-            log.error("Failed to auto-index characters for story {}: {}", 
-                storyCreation.getId(), e.getMessage());
-            // 캐릭터 인덱싱 실패는 치명적이지 않으므로 예외를 throw하지 않음
-        }
     }
 
 }

@@ -57,6 +57,10 @@ public class StoryCreation {
     @Column(name = "selected_gauge_ids", columnDefinition = "TEXT")
     private String selectedGaugeIdsJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "selected_characters_for_chat", columnDefinition = "TEXT")
+    private String selectedCharactersForChatJson;
+
     // Configuration
     private String description;
 

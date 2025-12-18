@@ -18,6 +18,7 @@ public class RagService {
 
     /**
      * 캐릭터를 RAG 시스템에 인덱싱
+     * 실패 시 false 반환 (non-critical - 챗봇 기능은 부가 기능)
      */
     public Boolean indexCharacter(CharacterIndexRequestDto request) {
         log.info("=== Index Character ===");
@@ -35,8 +36,10 @@ public class RagService {
             return result != null && result;
 
         } catch (Exception e) {
-            log.error("Failed to index character: {}", request.getCharacterId(), e);
-            throw new RuntimeException("Failed to index character: " + e.getMessage());
+            log.warn("Failed to index character (non-critical): {}", request.getCharacterId(), e);
+            // 캐릭터 인덱싱 실패는 치명적이지 않으므로 경고만 로그
+            // 챗봇 기능은 작동하지 않지만 게임 진행은 가능
+            return false;
         }
     }
 

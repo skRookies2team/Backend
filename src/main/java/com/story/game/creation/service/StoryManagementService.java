@@ -9,6 +9,8 @@ import com.story.game.common.entity.StoryData;
 import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.rag.dto.CharacterIndexRequestDto;
+import com.story.game.rag.service.RagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,9 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +30,7 @@ import java.util.UUID;
 public class StoryManagementService {
 
     private final StoryCreationRepository storyCreationRepository;
+    private final RagService ragService;
     private final StoryDataRepository storyDataRepository;
     private final WebClient relayServerWebClient;
     private final ObjectMapper objectMapper;
@@ -302,6 +307,180 @@ public class StoryManagementService {
         } catch (Exception e) {
             log.error("Failed to select gauges", e);
             throw new RuntimeException("Failed to select gauges: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void selectAndIndexCharacters(String storyId, SelectCharactersRequestDto request) {
+        log.info("=== Select and Index Characters ===");
+        log.info("StoryId: {}, Selected characters: {}", storyId, request.getCharacterNames());
+
+        StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+
+        // Validate story state - only allow character selection at appropriate stages
+        StoryCreation.CreationStatus status = storyCreation.getStatus();
+        if (status != StoryCreation.CreationStatus.CHARACTERS_READY &&
+            status != StoryCreation.CreationStatus.GAUGES_READY &&
+            status != StoryCreation.CreationStatus.GAUGES_SELECTED &&
+            status != StoryCreation.CreationStatus.CONFIGURED) {
+            throw new IllegalStateException(
+                "Cannot select characters at current stage: " + status +
+                ". Characters can only be selected after character analysis is complete and before story generation starts."
+            );
+        }
+
+        // Validate story state
+        if (storyCreation.getCharactersJson() == null || storyCreation.getCharactersJson().isBlank()) {
+            throw new RuntimeException("No characters available for this story");
+        }
+
+        // Log if characters were already selected (overwriting)
+        if (storyCreation.getSelectedCharactersForChatJson() != null &&
+            !storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            log.warn("Overwriting previously selected characters for story: {}", storyId);
+        }
+
+        try {
+            // Parse existing characters
+            List<CharacterDto> allCharacters = objectMapper.readValue(
+                    storyCreation.getCharactersJson(),
+                    new TypeReference<List<CharacterDto>>() {}
+            );
+
+            // Validate selected character names exist
+            List<String> availableNames = allCharacters.stream()
+                    .map(CharacterDto::getName)
+                    .collect(Collectors.toList());
+
+            for (String selectedName : request.getCharacterNames()) {
+                if (!availableNames.contains(selectedName)) {
+                    throw new IllegalArgumentException("Character not found: " + selectedName);
+                }
+            }
+
+            // Save selected characters to StoryCreation
+            storyCreation.setSelectedCharactersForChatJson(
+                    objectMapper.writeValueAsString(request.getCharacterNames())
+            );
+            storyCreationRepository.save(storyCreation);
+
+            // Index selected characters to NPC AI
+            indexSelectedCharacters(storyCreation, allCharacters, request.getCharacterNames());
+
+            log.info("Characters selected and indexed successfully");
+
+        } catch (Exception e) {
+            log.error("Failed to select and index characters", e);
+            throw new RuntimeException("Failed to select characters: " + e.getMessage());
+        }
+    }
+
+    private void indexSelectedCharacters(StoryCreation storyCreation,
+                                        List<CharacterDto> allCharacters,
+                                        List<String> selectedNames) {
+        try {
+            // Filter only selected characters
+            List<CharacterDto> selectedCharacters = allCharacters.stream()
+                    .filter(c -> selectedNames.contains(c.getName()))
+                    .collect(Collectors.toList());
+
+            // Build combined description
+            StringBuilder combinedDescription = new StringBuilder();
+
+            for (CharacterDto character : selectedCharacters) {
+                if (character.getName() != null) {
+                    combinedDescription.append(character.getName());
+                    if (character.getDescription() != null) {
+                        combinedDescription.append(": ").append(character.getDescription());
+                    }
+                    combinedDescription.append(System.lineSeparator());
+                }
+            }
+
+            if (storyCreation.getSummary() != null) {
+                combinedDescription.append(System.lineSeparator()).append(storyCreation.getSummary());
+            }
+
+            // Create index request
+            CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
+                    .characterId(storyCreation.getId().toString())  // Use StoryCreation ID as session_id
+                    .name(storyCreation.getTitle())
+                    .description(combinedDescription.toString())
+                    .personality(null)
+                    .background(null)
+                    .dialogueSamples(null)
+                    .relationships(null)
+                    .additionalInfo(java.util.Map.of(
+                            "storyId", storyCreation.getId().toString(),
+                            "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
+                            "selectedCharacters", String.join(", ", selectedNames)
+                    ))
+                    .build();
+
+            // Call RagService to index - 실패해도 계속 진행
+            Boolean result = ragService.indexCharacter(indexRequest);
+
+            if (result) {
+                log.info("Selected characters indexed successfully to NPC AI with StoryCreation ID: {}", storyCreation.getId());
+            } else {
+                log.warn("Character indexing to NPC AI failed for StoryCreation ID: {}. Chatbot may not work, but story creation can continue.", storyCreation.getId());
+            }
+
+        } catch (Exception e) {
+            // 인덱싱 실패는 치명적이지 않으므로 경고만 로그
+            log.warn("Failed to index selected characters (non-critical): {}. Story creation will continue.", e.getMessage());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public SelectedCharactersResponseDto getSelectedCharacters(String storyId) {
+        log.info("=== Get Selected Characters ===");
+        log.info("StoryId: {}", storyId);
+
+        StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+
+        // Check if characters have been selected
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            return SelectedCharactersResponseDto.builder()
+                    .hasSelection(false)
+                    .selectedCharacterNames(List.of())
+                    .selectedCharacters(List.of())
+                    .build();
+        }
+
+        try {
+            // Parse selected character names
+            List<String> selectedNames = objectMapper.readValue(
+                    storyCreation.getSelectedCharactersForChatJson(),
+                    new TypeReference<List<String>>() {}
+            );
+
+            // Parse all characters
+            List<CharacterDto> allCharacters = new ArrayList<>();
+            if (storyCreation.getCharactersJson() != null && !storyCreation.getCharactersJson().isBlank()) {
+                allCharacters = objectMapper.readValue(
+                        storyCreation.getCharactersJson(),
+                        new TypeReference<List<CharacterDto>>() {}
+                );
+            }
+
+            // Filter selected characters
+            List<CharacterDto> selectedCharacters = allCharacters.stream()
+                    .filter(c -> selectedNames.contains(c.getName()))
+                    .collect(Collectors.toList());
+
+            return SelectedCharactersResponseDto.builder()
+                    .hasSelection(true)
+                    .selectedCharacterNames(selectedNames)
+                    .selectedCharacters(selectedCharacters)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to parse selected characters", e);
+            throw new RuntimeException("Failed to retrieve selected characters: " + e.getMessage());
         }
     }
 

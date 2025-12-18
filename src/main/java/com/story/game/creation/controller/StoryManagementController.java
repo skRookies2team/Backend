@@ -107,6 +107,46 @@ public class StoryManagementController {
     }
 
     /**
+     * 4a. 챗봇용 캐릭터 선택
+     */
+    @PostMapping("/{storyId}/select-characters")
+    @Operation(
+            summary = "챗봇용 캐릭터 선택",
+            description = "분석된 캐릭터 중 1-2명을 선택하여 NPC AI 챗봇에 즉시 학습시킵니다. " +
+                    "이 엔드포인트는 캐릭터 분석 완료 후(스텝 2) 호출되어야 합니다."
+    )
+    public ResponseEntity<Void> selectCharactersForChat(
+            @PathVariable String storyId,
+            @Valid @RequestBody SelectCharactersRequestDto request) {
+        log.info("=== Select Characters for Chat ===");
+        log.info("StoryId: {}, Selected characters: {}", storyId, request.getCharacterNames());
+
+        storyManagementService.selectAndIndexCharacters(storyId, request);
+
+        log.info("Characters selected and indexed successfully");
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 4b. 선택된 캐릭터 조회
+     */
+    @GetMapping("/{storyId}/selected-characters")
+    @Operation(
+            summary = "선택된 캐릭터 조회",
+            description = "사용자가 선택한 캐릭터 목록과 상세 정보를 조회합니다. " +
+                    "선택되지 않았으면 hasSelection=false를 반환합니다."
+    )
+    public ResponseEntity<SelectedCharactersResponseDto> getSelectedCharacters(
+            @PathVariable String storyId) {
+        log.info("=== Get Selected Characters Request ===");
+        log.info("StoryId: {}", storyId);
+
+        SelectedCharactersResponseDto response = storyManagementService.getSelectedCharacters(storyId);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * 5. 게이지 선택
      */
     @PostMapping("/{storyId}/gauges/select")

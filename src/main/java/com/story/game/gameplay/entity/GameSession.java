@@ -32,6 +32,9 @@ public class GameSession {
     @Column(name = "story_data_id", nullable = false)
     private Long storyDataId;
 
+    @Column(name = "story_creation_id", nullable = false)
+    private String storyCreationId;
+
     @Column(name = "current_episode_id")
     private String currentEpisodeId;
 

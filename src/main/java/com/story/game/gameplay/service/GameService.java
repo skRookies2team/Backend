@@ -73,6 +73,12 @@ public class GameService {
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
                 .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryData: " + storyData.getId()));
 
+        // 캐릭터 선택 필수 검증
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            throw new IllegalStateException("Characters must be selected to start the game. NPC chatbot requires character selection.");
+        }
+
         Episode firstEpisode = episodeRepository.findByStoryAndOrder(storyCreation, 1)
                 .orElseThrow(() -> new RuntimeException("First episode not found"));
 
@@ -99,6 +105,7 @@ public class GameService {
         GameSession session = GameSession.builder()
                 .user(user)
                 .storyDataId(storyDataId)
+                .storyCreationId(storyCreation.getId())
                 .currentEpisodeId(firstEpisode.getId().toString())
                 .currentNodeId(rootNode.getId().toString())
                 .gaugeStates(initialGauges)
@@ -209,33 +216,29 @@ public class GameService {
 
 
             // NPC AI에 게임 진행 상황 업데이트 (비동기, 실패해도 게임 진행에 영향 없음)
-
             try {
+                // StoryDataId null 체크
+                if (session.getStoryCreationId() == null) {
+                    log.warn("StoryCreationId is null, skipping NPC AI update for session: {}", session.getId());
+                } else {
+                    String progressContent = buildProgressContent(selectedChoice, currentNode, nextNode);
 
-                String progressContent = buildProgressContent(selectedChoice, currentNode, nextNode);
+                    GameProgressUpdateRequestDto updateRequest = GameProgressUpdateRequestDto.builder()
+                            .characterId(session.getStoryCreationId())  // StoryCreation ID를 session_id로 사용
+                            .content(progressContent)
+                            .metadata(Map.of(
+                                    "nodeId", nextNode.getId().toString(),
+                                    "depth", nextNode.getDepth(),
+                                    "episodeId", nextNode.getEpisode().getId().toString(),
+                                    "gameSessionId", session.getId(),  // 게임 세션 ID (참고용)
+                                    "timestamp", System.currentTimeMillis()
+                            ))
+                            .build();
 
-                GameProgressUpdateRequestDto updateRequest = GameProgressUpdateRequestDto.builder()
-
-                        .characterId(session.getStoryDataId().toString())  // StoryData ID를 session_id로 사용
-
-                        .content(progressContent)
-
-                        .metadata(Map.of(
-                                "nodeId", nextNode.getId().toString(),
-                                "depth", nextNode.getDepth(),
-                                "episodeId", nextNode.getEpisode().getId().toString(),
-                                "gameSessionId", session.getId(),  // 게임 세션 ID (참고용)
-                                "timestamp", System.currentTimeMillis()
-                        ))
-
-                        .build();
-
-                ragService.updateGameProgress(updateRequest);
-
+                    ragService.updateGameProgress(updateRequest);
+                }
             } catch (Exception e) {
-
                 log.warn("Failed to update game progress to NPC AI (non-critical): {}", e.getMessage());
-
             }
 
 
