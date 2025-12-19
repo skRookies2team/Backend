@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ImageGenerationResponseDto {
     private String imageUrl;
+    private String enhancedPrompt;
+    private String storyId;
+    private String nodeId;
     private String fileKey;
     private String generatedAt;
 }

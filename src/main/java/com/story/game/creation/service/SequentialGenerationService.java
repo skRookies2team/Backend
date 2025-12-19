@@ -52,6 +52,7 @@ public class SequentialGenerationService {
     private final StoryMapper storyMapper;
     private final S3Service s3Service;
     private final RagService ragService;
+    private final ImageGenerationService imageGenerationService;
     private final SequentialGenerationService self;
 
     public SequentialGenerationService(
@@ -65,6 +66,7 @@ public class SequentialGenerationService {
             StoryMapper storyMapper,
             S3Service s3Service,
             RagService ragService,
+            ImageGenerationService imageGenerationService,
             @org.springframework.context.annotation.Lazy SequentialGenerationService self) {
         this.storyCreationRepository = storyCreationRepository;
         this.storyDataRepository = storyDataRepository;
@@ -76,6 +78,7 @@ public class SequentialGenerationService {
         this.storyMapper = storyMapper;
         this.s3Service = s3Service;
         this.ragService = ragService;
+        this.imageGenerationService = imageGenerationService;
         this.self = self;
     }
 
@@ -215,7 +218,12 @@ public class SequentialGenerationService {
                     episodeEndingRepository.save(endingEntity);
                 }
             }
-            log.info("[LOG-STEP 7] Episode endings processed. Uploading snapshot to S3...");
+            log.info("[LOG-STEP 7] Episode endings processed. Generating images for root and ending nodes...");
+
+            // Generate images for root and ending nodes
+            generateImagesForEpisode(storyCreation.getId(), newEpisodeEntity, newEpisodeDto);
+
+            log.info("[LOG-STEP 8] Image generation completed. Uploading snapshot to S3...");
 
             // 2. Create a JSON snapshot and upload to S3
             FullStoryDto fullStoryForS3 = storyMapper.buildFullStoryDtoFromDb(storyCreation);
@@ -366,6 +374,68 @@ public class SequentialGenerationService {
                 .episodes(episodes)  // 생성된 에피소드 목록 포함
                 .build();
         generationTasks.put(taskId, progressDto);
+    }
+
+    /**
+     * Generate images for root and ending nodes in an episode
+     */
+    private void generateImagesForEpisode(
+        String storyCreationId,
+        Episode episode,
+        EpisodeDto episodeDto
+    ) {
+        log.info("Starting image generation for episode {} (order={})",
+            episode.getId(), episode.getOrder());
+
+        // Find the root node (depth = 0) for this episode
+        com.story.game.story.entity.StoryNode rootNode = storyNodeRepository.findByEpisodeAndDepth(episode, 0)
+            .orElse(null);
+
+        if (rootNode == null) {
+            log.warn("No root node found for episode {}", episode.getId());
+            return;
+        }
+
+        // Recursively process all nodes in the episode
+        processNodeTreeForImages(
+            storyCreationId,
+            rootNode,
+            episode.getTitle(),
+            episode.getOrder()
+        );
+    }
+
+    /**
+     * Recursively process node tree to generate images for root and ending nodes
+     */
+    private void processNodeTreeForImages(
+        String storyCreationId,
+        com.story.game.story.entity.StoryNode node,
+        String episodeTitle,
+        Integer episodeOrder
+    ) {
+        if (node == null) {
+            return;
+        }
+
+        // Generate image for this node if needed (root or ending)
+        imageGenerationService.generateAndSaveNodeImage(
+            storyCreationId, node, episodeTitle, episodeOrder
+        );
+
+        // Recursively process child nodes
+        if (node.getOutgoingChoices() != null) {
+            for (com.story.game.story.entity.StoryChoice choice : node.getOutgoingChoices()) {
+                if (choice.getDestinationNode() != null) {
+                    processNodeTreeForImages(
+                        storyCreationId,
+                        choice.getDestinationNode(),
+                        episodeTitle,
+                        episodeOrder
+                    );
+                }
+            }
+        }
     }
 
 }

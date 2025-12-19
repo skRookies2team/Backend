@@ -2,6 +2,8 @@ package com.story.game.creation.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.story.game.ai.dto.NovelStyleLearnRequestDto;
+import com.story.game.ai.service.RelayServerClient;
 import com.story.game.creation.dto.*;
 import com.story.game.common.dto.*;
 import com.story.game.creation.entity.StoryCreation;
@@ -34,6 +36,7 @@ public class StoryManagementService {
     private final RagService ragService;
     private final StoryDataRepository storyDataRepository;
     private final WebClient relayServerWebClient;
+    private final RelayServerClient relayServerClient;
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
 
@@ -145,6 +148,24 @@ public class StoryManagementService {
             storyCreationRepository.save(storyCreation);
 
             log.info("AI analysis completed for story: {}", storyId);
+
+            // Learn novel style for image generation (non-blocking, failure is non-critical)
+            try {
+                NovelStyleLearnRequestDto styleRequest = NovelStyleLearnRequestDto.builder()
+                        .story_id(storyId)
+                        .novel_text(novelText)
+                        .title(storyCreation.getTitle())
+                        .build();
+
+                Boolean styleResult = relayServerClient.learnNovelStyle(styleRequest);
+                if (styleResult) {
+                    log.info("Novel style learned successfully for story: {}", storyId);
+                } else {
+                    log.warn("Novel style learning failed for story: {} (non-critical)", storyId);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to learn novel style (non-critical): {}", e.getMessage());
+            }
         } catch (Exception e) {
             log.error("Failed to analyze novel for story: {}", storyId, e);
             updateStoryStatus(storyId, StoryCreation.CreationStatus.FAILED, "Analysis failed: " + e.getMessage());
@@ -803,6 +824,25 @@ public class StoryManagementService {
             storyCreationRepository.save(storyCreation);
 
             log.info("AI analysis from S3 completed for story: {}", storyId);
+
+            // Learn novel style for image generation (non-blocking, failure is non-critical)
+            try {
+                String novelTextForStyle = s3Service.downloadFileContent(fileKey);
+                NovelStyleLearnRequestDto styleRequest = NovelStyleLearnRequestDto.builder()
+                        .story_id(storyId)
+                        .novel_text(novelTextForStyle)
+                        .title(storyCreation.getTitle())
+                        .build();
+
+                Boolean styleResult = relayServerClient.learnNovelStyle(styleRequest);
+                if (styleResult) {
+                    log.info("Novel style learned successfully for story: {}", storyId);
+                } else {
+                    log.warn("Novel style learning failed for story: {} (non-critical)", storyId);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to learn novel style (non-critical): {}", e.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("Failed to analyze novel from S3", e);

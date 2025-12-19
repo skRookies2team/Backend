@@ -170,5 +170,4 @@ API는 Swagger/OpenAPI를 사용하여 문서화되었습니다. 서버가 실�
 - **`SequentialGenerationService`**: S3 대신 DB를 중심으로 에피소드를 저장하고 관리하도록 로직 전면 개편. S3는 백업용으로 활용.
 - **`StoryCreation` 엔티티**: `s3FileKey` 필드를 백업용 스냅샷의 키로 활용.
 - **`StoryGenerationService`**: 더 이상 사용되지 않아 삭제됨.
-
 이러한 변경을 통해 사용자는 AI가 생성하는 스토리에 더 깊이 개입하고, 원하는 방향으로 스토리를 이끌어갈 수 있게 됩니다.

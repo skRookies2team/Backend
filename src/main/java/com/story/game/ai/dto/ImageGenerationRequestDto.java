@@ -12,6 +12,8 @@ import java.util.Map;
 @AllArgsConstructor
 @Builder
 public class ImageGenerationRequestDto {
+    private String storyId;
+    private String nodeId;
     private String nodeText;
     private String situation;
     private Map<String, String> npcEmotions;
@@ -20,4 +22,6 @@ public class ImageGenerationRequestDto {
     private Integer nodeDepth;
     private String imageStyle;
     private String additionalContext;
+    private String novelS3Bucket;
+    private String novelS3Key;
 }

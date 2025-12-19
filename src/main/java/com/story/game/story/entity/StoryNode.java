@@ -58,4 +58,10 @@ public class StoryNode {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "relations_update", columnDefinition = "TEXT")
     private String relationsUpdate;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    @Column(name = "image_file_key", length = 500)
+    private String imageFileKey;
 }

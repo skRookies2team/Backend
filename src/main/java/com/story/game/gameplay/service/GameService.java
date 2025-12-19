@@ -43,6 +43,7 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +62,10 @@ public class GameService {
     private final StoryCreationRepository storyCreationRepository;
     private final EpisodeEndingRepository episodeEndingRepository;
     private final StoryMapper storyMapper;
+    private final com.story.game.infrastructure.s3.S3Service s3Service;
+
+    @Value("${aws.s3.bucket}")
+    private String s3BucketName;
 
     // [SpEL] 파서 인스턴스 생성
     private final ExpressionParser parser = new SpelExpressionParser();
@@ -78,6 +83,9 @@ public class GameService {
             storyCreation.getSelectedCharactersForChatJson().isBlank()) {
             throw new IllegalStateException("Characters must be selected to start the game. NPC chatbot requires character selection.");
         }
+
+        // Extract character ID for RAG integration
+        String characterId = extractCharacterIdFromJson(storyCreation.getSelectedCharactersForChatJson());
 
         Episode firstEpisode = episodeRepository.findByStoryAndOrder(storyCreation, 1)
                 .orElseThrow(() -> new RuntimeException("First episode not found"));
@@ -106,6 +114,7 @@ public class GameService {
                 .user(user)
                 .storyDataId(storyDataId)
                 .storyCreationId(storyCreation.getId())
+                .selectedCharacterId(characterId)
                 .currentEpisodeId(firstEpisode.getId().toString())
                 .currentNodeId(rootNode.getId().toString())
                 .gaugeStates(initialGauges)
@@ -117,7 +126,12 @@ public class GameService {
         session = gameSessionRepository.save(session);
         log.info("Game session created for user: {} with sessionId: {}", user.getUsername(), session.getId());
 
-        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(firstEpisode));
+        String imageUrl = generateNodeImage(
+                session.getStoryCreationId(),
+                rootNode.getId().toString(),
+                storyMapper.toStoryNodeDto(rootNode),
+                storyMapper.toEpisodeDto(firstEpisode)
+        );
 
         return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, imageUrl);
     }
@@ -152,7 +166,12 @@ public class GameService {
 
         boolean isFirstNodeOfEpisode = currentNode.getDepth() == 0;
 
-        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(currentNode), storyMapper.toEpisodeDto(currentEpisode));
+        String imageUrl = generateNodeImage(
+                session.getStoryCreationId(),
+                session.getCurrentNodeId(),
+                storyMapper.toStoryNodeDto(currentNode),
+                storyMapper.toEpisodeDto(currentEpisode)
+        );
 
         return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, imageUrl);
     }
@@ -257,7 +276,12 @@ public class GameService {
                 return handleEpisodeEnd(session);
             }
 
-            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(nextNode), storyMapper.toEpisodeDto(currentNode.getEpisode()));
+            String imageUrl = generateNodeImage(
+                    session.getStoryCreationId(),
+                    nextNode.getId().toString(),
+                    storyMapper.toStoryNodeDto(nextNode),
+                    storyMapper.toEpisodeDto(currentNode.getEpisode())
+            );
 
             return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, imageUrl);
         } else {
@@ -302,7 +326,12 @@ public class GameService {
             session.setAccumulatedTags(new HashMap<>());
             gameSessionRepository.save(session);
 
-            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(nextEpisode));
+            String imageUrl = generateNodeImage(
+                    session.getStoryCreationId(),
+                    rootNode.getId().toString(),
+                    storyMapper.toStoryNodeDto(rootNode),
+                    storyMapper.toEpisodeDto(nextEpisode)
+            );
             GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, imageUrl);
             response.setIsEpisodeEnd(true);
             response.setEpisodeEnding(storyMapper.toEpisodeEndingDto(matchedEnding));
@@ -458,6 +487,7 @@ public class GameService {
 
         return GameStateResponseDto.builder()
                 .sessionId(session.getId())
+                .characterId(session.getSelectedCharacterId())
                 .currentEpisodeId(session.getCurrentEpisodeId())
                 .currentNodeId(session.getCurrentNodeId())
                 .gaugeStates(session.getGaugeStates())
@@ -502,18 +532,45 @@ public class GameService {
         }
     }
 
-    private String generateNodeImage(StoryNodeDto node, EpisodeDto episode) {
+    private String generateNodeImage(String storyId, String nodeId, StoryNodeDto node, EpisodeDto episode) {
+        // Check if image already exists in database
+        Optional<StoryNode> nodeOpt = storyNodeRepository.findById(UUID.fromString(nodeId));
+        if (nodeOpt.isPresent() && nodeOpt.get().getImageFileKey() != null) {
+            // Image exists, generate presigned download URL
+            String presignedUrl = s3Service.generatePresignedDownloadUrl(
+                nodeOpt.get().getImageFileKey()
+            );
+            log.info("Using existing image for node {}: {}", nodeId, presignedUrl);
+            return presignedUrl;
+        }
+
+        // Image doesn't exist, generate new one
+        log.info("No existing image found for node {}, generating new image", nodeId);
+
         try {
             com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
+                    .storyId(storyId)
+                    .nodeId(nodeId)
                     .nodeText(node.getText())
                     .situation(node.getDetails() != null ? node.getDetails().getSituation() : null)
                     .npcEmotions(node.getDetails() != null ? node.getDetails().getNpcEmotions() : null)
                     .episodeTitle(episode.getTitle())
                     .episodeOrder(episode.getOrder())
                     .nodeDepth(node.getDepth())
+                    .novelS3Bucket(s3BucketName)
+                    .novelS3Key("novels/original/" + storyId + ".txt")
                     .build();
 
             com.story.game.ai.dto.ImageGenerationResponseDto response = relayServerClient.generateImage(request);
+
+            // Save to database for future use
+            if (nodeOpt.isPresent()) {
+                StoryNode nodeEntity = nodeOpt.get();
+                nodeEntity.setImageUrl(response.getImageUrl());
+                nodeEntity.setImageFileKey(response.getFileKey());
+                storyNodeRepository.save(nodeEntity);
+            }
+
             return response.getImageUrl();
         } catch (Exception e) {
             log.warn("Failed to generate image: {}", e.getMessage());
@@ -678,5 +735,22 @@ public class GameService {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Extract character ID from selected characters JSON
+     * Used for RAG integration - extracts the first character ID
+     */
+    private String extractCharacterIdFromJson(String selectedCharactersJson) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(selectedCharactersJson);
+            if (root.isArray() && root.size() > 0) {
+                return root.get(0).asText();
+            }
+            throw new IllegalStateException("No character selected");
+        } catch (Exception e) {
+            log.error("Failed to parse character selection JSON", e);
+            throw new IllegalStateException("Failed to parse character selection", e);
+        }
     }
 }
