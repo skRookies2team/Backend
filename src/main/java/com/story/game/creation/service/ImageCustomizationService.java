@@ -36,7 +36,7 @@ public class ImageCustomizationService {
     private String s3BucketName;
 
     /**
-     * Regenerate image with custom prompt for Episode 1 nodes
+     * Regenerate image with custom prompt for any episode nodes
      */
     @Transactional
     public ImageGenerationResponseDto regenerateImage(
@@ -44,8 +44,8 @@ public class ImageCustomizationService {
         String nodeId,
         RegenerateImageRequestDto request
     ) {
-        // Validate episode is Episode 1
-        StoryNode node = validateEpisode1Node(storyCreationId, nodeId);
+        // Validate node exists
+        StoryNode node = validateNode(storyCreationId, nodeId);
         Episode episode = node.getEpisode();
 
         // Build request with custom prompt
@@ -72,7 +72,7 @@ public class ImageCustomizationService {
     }
 
     /**
-     * Upload user's custom image for Episode 1 nodes
+     * Upload user's custom image for any episode nodes
      */
     @Transactional
     public UploadImageResponseDto uploadCustomImage(
@@ -80,8 +80,8 @@ public class ImageCustomizationService {
         String nodeId,
         UploadImageRequestDto request
     ) {
-        // Validate episode is Episode 1
-        StoryNode node = validateEpisode1Node(storyCreationId, nodeId);
+        // Validate node exists
+        StoryNode node = validateNode(storyCreationId, nodeId);
 
         // Generate presigned upload URL
         String fileKey = "images/custom/" + storyCreationId + "/nodes/" + nodeId + ".jpg";
@@ -122,10 +122,10 @@ public class ImageCustomizationService {
     }
 
     /**
-     * Validate that the node belongs to Episode 1
+     * Validate that the node exists
      * Returns the node if valid, throws exception otherwise
      */
-    private StoryNode validateEpisode1Node(String storyCreationId, String nodeId) {
+    private StoryNode validateNode(String storyCreationId, String nodeId) {
         StoryNode node = storyNodeRepository.findById(UUID.fromString(nodeId))
             .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
 
@@ -134,12 +134,8 @@ public class ImageCustomizationService {
             throw new IllegalArgumentException("Episode not found for node: " + nodeId);
         }
 
-        if (episode.getOrder() == null || episode.getOrder() != 1) {
-            throw new IllegalStateException(
-                "Custom images are only allowed for Episode 1. This node belongs to Episode "
-                + episode.getOrder()
-            );
-        }
+        // Allow custom images for all episodes
+        log.info("Custom image request for Episode {} node {}", episode.getOrder(), nodeId);
 
         return node;
     }
