@@ -362,4 +362,37 @@ public class RagService {
             return false;
         }
     }
+
+    /**
+     * 캐릭터 정보 설정 (학습 없이)
+     * RAG 시스템의 캐릭터 페르소나/설명 업데이트
+     */
+    public Boolean setCharacter(CharacterSetRequestDto request) {
+        log.info("=== Set Character ===");
+        log.info("Character: {} ({})", request.getCharacterName(), request.getCharacterId());
+
+        try {
+            Boolean result = relayServerWebClient.post()
+                    .uri("/ai/chat/set-character")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(Boolean.class)
+                    .block();
+
+            log.info("Character set result: {}", result);
+            return result != null && result;
+
+        } catch (WebClientResponseException e) {
+            log.warn("Relay server returned error while setting character (non-critical) - Status: {}, Body: {}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
+        } catch (WebClientRequestException e) {
+            log.warn("Failed to connect to relay server while setting character (non-critical): {}",
+                    e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.warn("Unexpected error while setting character (non-critical): {}", e.getMessage());
+            return false;
+        }
+    }
 }

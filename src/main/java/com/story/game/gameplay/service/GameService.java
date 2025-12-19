@@ -598,6 +598,7 @@ public class GameService {
 
     /**
      * 게임 진행 상황을 텍스트로 변환
+     * JSON 형식의 노드 정보(NPC 감정, 관계 변화 등)를 파싱하여 포함
      */
     private String buildProgressContent(StoryChoice choice, StoryNode fromNode, StoryNode toNode) {
         StringBuilder sb = new StringBuilder();
@@ -612,6 +613,18 @@ public class GameService {
         sb.append("플레이어의 선택:\n");
         sb.append("'").append(choice.getText()).append("'").append("\n\n");
 
+        // 선택의 태그 정보
+        if (choice.getTags() != null && !choice.getTags().isEmpty()) {
+            try {
+                List<String> tags = objectMapper.readValue(choice.getTags(), new TypeReference<List<String>>() {});
+                if (!tags.isEmpty()) {
+                    sb.append("선택의 의미: ").append(String.join(", ", tags)).append("\n\n");
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse choice tags for progress content", e);
+            }
+        }
+
         // 즉각 반응
         if (choice.getImmediateReaction() != null && !choice.getImmediateReaction().isEmpty()) {
             sb.append("선택 직후 반응:\n");
@@ -624,7 +637,44 @@ public class GameService {
 
         // 상황 정보
         if (toNode.getSituation() != null && !toNode.getSituation().isEmpty()) {
-            sb.append("\n상세 상황: ").append(toNode.getSituation());
+            sb.append("\n상세 상황: ").append(toNode.getSituation()).append("\n");
+        }
+
+        // NPC 감정 정보 파싱
+        if (toNode.getNpcEmotions() != null && !toNode.getNpcEmotions().isEmpty()) {
+            try {
+                Map<String, String> emotions = objectMapper.readValue(toNode.getNpcEmotions(),
+                        new TypeReference<Map<String, String>>() {});
+                if (!emotions.isEmpty()) {
+                    sb.append("\nNPC 감정 상태:\n");
+                    emotions.forEach((npc, emotion) ->
+                        sb.append("- ").append(npc).append(": ").append(emotion).append("\n")
+                    );
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse NPC emotions for progress content", e);
+            }
+        }
+
+        // 관계 변화 정보 파싱
+        if (toNode.getRelationsUpdate() != null && !toNode.getRelationsUpdate().isEmpty()) {
+            try {
+                Map<String, String> relations = objectMapper.readValue(toNode.getRelationsUpdate(),
+                        new TypeReference<Map<String, String>>() {});
+                if (!relations.isEmpty()) {
+                    sb.append("\n관계 변화:\n");
+                    relations.forEach((character, change) ->
+                        sb.append("- ").append(character).append(": ").append(change).append("\n")
+                    );
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse relations update for progress content", e);
+            }
+        }
+
+        // 에피소드 정보
+        if (toNode.getEpisode() != null) {
+            sb.append("\n에피소드: ").append(toNode.getEpisode().getTitle());
         }
 
         return sb.toString();

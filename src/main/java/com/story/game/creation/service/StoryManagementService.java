@@ -410,21 +410,51 @@ public class StoryManagementService {
                     .filter(c -> selectedNames.contains(c.getName()))
                     .collect(Collectors.toList());
 
-            // Build combined description
+            // Build rich character description with all available information
             StringBuilder combinedDescription = new StringBuilder();
 
-            for (CharacterDto character : selectedCharacters) {
-                if (character.getName() != null) {
-                    combinedDescription.append(character.getName());
-                    if (character.getDescription() != null) {
-                        combinedDescription.append(": ").append(character.getDescription());
-                    }
-                    combinedDescription.append(System.lineSeparator());
-                }
+            combinedDescription.append("=== 소설 정보 ===").append(System.lineSeparator());
+            combinedDescription.append("제목: ").append(storyCreation.getTitle()).append(System.lineSeparator());
+            if (storyCreation.getGenre() != null) {
+                combinedDescription.append("장르: ").append(storyCreation.getGenre()).append(System.lineSeparator());
+            }
+            combinedDescription.append(System.lineSeparator());
+
+            // Add story summary
+            if (storyCreation.getSummary() != null && !storyCreation.getSummary().isBlank()) {
+                combinedDescription.append("=== 줄거리 요약 ===").append(System.lineSeparator());
+                combinedDescription.append(storyCreation.getSummary()).append(System.lineSeparator());
+                combinedDescription.append(System.lineSeparator());
             }
 
-            if (storyCreation.getSummary() != null) {
-                combinedDescription.append(System.lineSeparator()).append(storyCreation.getSummary());
+            // Add detailed character information
+            combinedDescription.append("=== 등장인물 정보 ===").append(System.lineSeparator());
+            for (CharacterDto character : selectedCharacters) {
+                if (character.getName() != null) {
+                    combinedDescription.append("■ ").append(character.getName()).append(System.lineSeparator());
+
+                    // Aliases
+                    if (character.getAliases() != null && !character.getAliases().isEmpty()) {
+                        combinedDescription.append("  별칭: ").append(String.join(", ", character.getAliases()))
+                                .append(System.lineSeparator());
+                    }
+
+                    // Description
+                    if (character.getDescription() != null && !character.getDescription().isBlank()) {
+                        combinedDescription.append("  설명: ").append(character.getDescription())
+                                .append(System.lineSeparator());
+                    }
+
+                    // Relationships
+                    if (character.getRelationships() != null && !character.getRelationships().isEmpty()) {
+                        combinedDescription.append("  관계:").append(System.lineSeparator());
+                        for (String relationship : character.getRelationships()) {
+                            combinedDescription.append("    - ").append(relationship).append(System.lineSeparator());
+                        }
+                    }
+
+                    combinedDescription.append(System.lineSeparator());
+                }
             }
 
             // Create index request

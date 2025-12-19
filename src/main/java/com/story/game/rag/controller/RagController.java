@@ -41,6 +41,23 @@ public class RagController {
     }
 
     @Operation(
+            summary = "캐릭터 정보 설정",
+            description = "학습 없이 캐릭터 정보만 업데이트합니다. " +
+                    "RAG 시스템의 캐릭터 페르소나/설명을 변경할 때 사용합니다."
+    )
+    @PostMapping("/set-character")
+    public ResponseEntity<Boolean> setCharacter(
+            @Valid @RequestBody CharacterSetRequestDto request) {
+        log.info("=== Set Character Request ===");
+        log.info("Character: {} ({})", request.getCharacterName(), request.getCharacterId());
+
+        Boolean result = ragService.setCharacter(request);
+
+        log.info("Character set completed: {}", result);
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(
             summary = "캐릭터 챗봇 메시지 전송",
             description = "인덱싱된 캐릭터에게 메시지를 전송하고 AI 응답을 받습니다. " +
                     "RAG를 통해 캐릭터의 성격과 배경에 맞는 응답을 생성합니다. " +
