@@ -753,4 +753,79 @@ public class GameService {
             throw new IllegalStateException("Failed to parse character selection", e);
         }
     }
+
+    /**
+     * Get selected characters by StoryData ID
+     * 프론트엔드가 StoryData ID로 선택된 캐릭터를 조회할 수 있도록 지원
+     */
+    @Transactional(readOnly = true)
+    public com.story.game.creation.dto.SelectedCharactersResponseDto getSelectedCharactersByStoryDataId(Long storyDataId) {
+        log.info("=== Get Selected Characters by StoryDataId ===");
+        log.info("StoryDataId: {}", storyDataId);
+
+        // StoryData ID로 StoryCreation 찾기
+        StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyDataId)
+                .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryDataId: " + storyDataId));
+
+        log.info("Found StoryCreation ID: {}", storyCreation.getId());
+
+        // 선택된 캐릭터 확인
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            return com.story.game.creation.dto.SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyDataId)
+                    .chatCharacterId(storyCreation.getId())  // NPC 대화용 - storyId와 동일
+                    .hasSelection(false)
+                    .selectedCharacterNames(List.of())
+                    .selectedCharacters(List.of())
+                    .build();
+        }
+
+        try {
+            // 선택된 캐릭터 이름 파싱
+            List<String> selectedNames = objectMapper.readValue(
+                    storyCreation.getSelectedCharactersForChatJson(),
+                    new TypeReference<List<String>>() {}
+            );
+
+            // 전체 캐릭터 파싱
+            List<com.story.game.common.dto.CharacterDto> allCharacters = new ArrayList<>();
+            if (storyCreation.getCharactersJson() != null && !storyCreation.getCharactersJson().isBlank()) {
+                allCharacters = objectMapper.readValue(
+                        storyCreation.getCharactersJson(),
+                        new TypeReference<List<com.story.game.common.dto.CharacterDto>>() {}
+                );
+            }
+
+            // 선택된 캐릭터만 필터링하고 각 캐릭터에 chatCharacterId 할당
+            List<com.story.game.common.dto.CharacterDto> selectedCharacters = allCharacters.stream()
+                    .filter(c -> selectedNames.contains(c.getName()))
+                    .map(c -> {
+                        // Generate unique chatCharacterId for each character
+                        String chatCharId = storyCreation.getId() + "_" + c.getName();
+                        return com.story.game.common.dto.CharacterDto.builder()
+                                .name(c.getName())
+                                .aliases(c.getAliases())
+                                .description(c.getDescription())
+                                .relationships(c.getRelationships())
+                                .chatCharacterId(chatCharId)  // Assign unique ID
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            return com.story.game.creation.dto.SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyDataId)
+                    .chatCharacterId(null)  // Deprecated - 이제 각 캐릭터가 고유 ID를 가짐
+                    .hasSelection(true)
+                    .selectedCharacterNames(selectedNames)
+                    .selectedCharacters(selectedCharacters)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to parse selected characters for StoryDataId: {}", storyDataId, e);
+            throw new RuntimeException("Failed to retrieve selected characters: " + e.getMessage());
+        }
+    }
 }

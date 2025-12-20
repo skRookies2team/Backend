@@ -14,6 +14,7 @@ import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.rag.dto.CharacterIndexRequestDto;
 import com.story.game.rag.dto.NovelIndexRequestDto;
 import com.story.game.rag.service.RagService;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -175,7 +176,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public StorySummaryResponseDto getSummary(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         String summary = null;
 
@@ -202,7 +203,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public StoryCharactersResponseDto getCharacters(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         List<CharacterDto> characters = null;
 
@@ -236,7 +237,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public StoryGaugesResponseDto getGauges(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         List<GaugeDto> gauges = null;
 
@@ -273,7 +274,7 @@ public class StoryManagementService {
         log.info("StoryId: {}, Selected: {}", storyId, request.getSelectedGaugeIds());
 
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         if (storyCreation.getStatus() != StoryCreation.CreationStatus.GAUGES_READY) {
             throw new IllegalStateException("Cannot select gauges: current status is " + storyCreation.getStatus());
@@ -362,7 +363,7 @@ public class StoryManagementService {
         log.info("StoryId: {}, Selected characters: {}", storyId, request.getCharacterNames());
 
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         // Validate story state - only allow character selection at appropriate stages
         StoryCreation.CreationStatus status = storyCreation.getStatus();
@@ -431,77 +432,113 @@ public class StoryManagementService {
                     .filter(c -> selectedNames.contains(c.getName()))
                     .collect(Collectors.toList());
 
-            // Build rich character description with all available information
-            StringBuilder combinedDescription = new StringBuilder();
-
-            combinedDescription.append("=== 소설 정보 ===").append(System.lineSeparator());
-            combinedDescription.append("제목: ").append(storyCreation.getTitle()).append(System.lineSeparator());
+            // Build story context (공통 정보)
+            StringBuilder storyContext = new StringBuilder();
+            storyContext.append("=== 소설 정보 ===").append(System.lineSeparator());
+            storyContext.append("제목: ").append(storyCreation.getTitle()).append(System.lineSeparator());
             if (storyCreation.getGenre() != null) {
-                combinedDescription.append("장르: ").append(storyCreation.getGenre()).append(System.lineSeparator());
+                storyContext.append("장르: ").append(storyCreation.getGenre()).append(System.lineSeparator());
             }
-            combinedDescription.append(System.lineSeparator());
+            storyContext.append(System.lineSeparator());
 
             // Add story summary
             if (storyCreation.getSummary() != null && !storyCreation.getSummary().isBlank()) {
-                combinedDescription.append("=== 줄거리 요약 ===").append(System.lineSeparator());
-                combinedDescription.append(storyCreation.getSummary()).append(System.lineSeparator());
-                combinedDescription.append(System.lineSeparator());
+                storyContext.append("=== 줄거리 요약 ===").append(System.lineSeparator());
+                storyContext.append(storyCreation.getSummary()).append(System.lineSeparator());
+                storyContext.append(System.lineSeparator());
             }
 
-            // Add detailed character information
-            combinedDescription.append("=== 등장인물 정보 ===").append(System.lineSeparator());
+            // 다른 캐릭터 정보 추가 (관계 파악용)
+            storyContext.append("=== 주요 등장인물 ===").append(System.lineSeparator());
             for (CharacterDto character : selectedCharacters) {
                 if (character.getName() != null) {
-                    combinedDescription.append("■ ").append(character.getName()).append(System.lineSeparator());
+                    storyContext.append("- ").append(character.getName());
+                    if (character.getDescription() != null && !character.getDescription().isBlank()) {
+                        storyContext.append(": ").append(character.getDescription());
+                    }
+                    storyContext.append(System.lineSeparator());
+                }
+            }
+            storyContext.append(System.lineSeparator());
+
+            // 각 캐릭터마다 개별적으로 인덱싱
+            int successCount = 0;
+            int failCount = 0;
+
+            for (CharacterDto character : selectedCharacters) {
+                if (character.getName() == null || character.getName().isBlank()) {
+                    continue;
+                }
+
+                try {
+                    // Generate unique character ID: {storyId}_{characterName}
+                    String characterId = storyCreation.getId() + "_" + character.getName();
+
+                    // Build character-specific description
+                    StringBuilder characterDescription = new StringBuilder();
+
+                    // Add story context
+                    characterDescription.append(storyContext);
+
+                    // Add specific character information
+                    characterDescription.append("=== 이 캐릭터의 상세 정보 ===").append(System.lineSeparator());
+                    characterDescription.append("이름: ").append(character.getName()).append(System.lineSeparator());
 
                     // Aliases
                     if (character.getAliases() != null && !character.getAliases().isEmpty()) {
-                        combinedDescription.append("  별칭: ").append(String.join(", ", character.getAliases()))
+                        characterDescription.append("별칭: ").append(String.join(", ", character.getAliases()))
                                 .append(System.lineSeparator());
                     }
 
                     // Description
                     if (character.getDescription() != null && !character.getDescription().isBlank()) {
-                        combinedDescription.append("  설명: ").append(character.getDescription())
+                        characterDescription.append("성격 및 특징: ").append(character.getDescription())
                                 .append(System.lineSeparator());
                     }
 
                     // Relationships
                     if (character.getRelationships() != null && !character.getRelationships().isEmpty()) {
-                        combinedDescription.append("  관계:").append(System.lineSeparator());
+                        characterDescription.append("관계:").append(System.lineSeparator());
                         for (String relationship : character.getRelationships()) {
-                            combinedDescription.append("    - ").append(relationship).append(System.lineSeparator());
+                            characterDescription.append("  - ").append(relationship).append(System.lineSeparator());
                         }
                     }
 
-                    combinedDescription.append(System.lineSeparator());
+                    // Create index request for this character
+                    CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
+                            .characterId(characterId)  // Unique ID per character
+                            .name(character.getName())
+                            .description(characterDescription.toString())
+                            .personality(character.getDescription())
+                            .background(storyContext.toString())
+                            .dialogueSamples(null)
+                            .relationships(character.getRelationships())
+                            .additionalInfo(java.util.Map.of(
+                                    "storyId", storyCreation.getId().toString(),
+                                    "storyTitle", storyCreation.getTitle(),
+                                    "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
+                                    "characterName", character.getName()
+                            ))
+                            .build();
+
+                    // Call RagService to index this character
+                    Boolean result = ragService.indexCharacter(indexRequest);
+
+                    if (result) {
+                        successCount++;
+                        log.info("Character '{}' indexed successfully with ID: {}", character.getName(), characterId);
+                    } else {
+                        failCount++;
+                        log.warn("Character '{}' indexing failed with ID: {}", character.getName(), characterId);
+                    }
+
+                } catch (Exception e) {
+                    failCount++;
+                    log.warn("Failed to index character '{}': {}", character.getName(), e.getMessage());
                 }
             }
 
-            // Create index request
-            CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
-                    .characterId(storyCreation.getId().toString())  // Use StoryCreation ID as session_id
-                    .name(storyCreation.getTitle())
-                    .description(combinedDescription.toString())
-                    .personality(null)
-                    .background(null)
-                    .dialogueSamples(null)
-                    .relationships(null)
-                    .additionalInfo(java.util.Map.of(
-                            "storyId", storyCreation.getId().toString(),
-                            "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
-                            "selectedCharacters", String.join(", ", selectedNames)
-                    ))
-                    .build();
-
-            // Call RagService to index - 실패해도 계속 진행
-            Boolean result = ragService.indexCharacter(indexRequest);
-
-            if (result) {
-                log.info("Selected characters indexed successfully to NPC AI with StoryCreation ID: {}", storyCreation.getId());
-            } else {
-                log.warn("Character indexing to NPC AI failed for StoryCreation ID: {}. Chatbot may not work, but story creation can continue.", storyCreation.getId());
-            }
+            log.info("Character indexing completed - Success: {}, Failed: {}", successCount, failCount);
 
         } catch (Exception e) {
             // 인덱싱 실패는 치명적이지 않으므로 경고만 로그
@@ -515,12 +552,15 @@ public class StoryManagementService {
         log.info("StoryId: {}", storyId);
 
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         // Check if characters have been selected
         if (storyCreation.getSelectedCharactersForChatJson() == null ||
             storyCreation.getSelectedCharactersForChatJson().isBlank()) {
             return SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyCreation.getStoryDataId())
+                    .chatCharacterId(storyCreation.getId())  // NPC 대화용 - storyId와 동일
                     .hasSelection(false)
                     .selectedCharacterNames(List.of())
                     .selectedCharacters(List.of())
@@ -543,12 +583,26 @@ public class StoryManagementService {
                 );
             }
 
-            // Filter selected characters
+            // Filter selected characters and assign chatCharacterId to each
             List<CharacterDto> selectedCharacters = allCharacters.stream()
                     .filter(c -> selectedNames.contains(c.getName()))
+                    .map(c -> {
+                        // Generate unique chatCharacterId for each character
+                        String chatCharId = storyCreation.getId() + "_" + c.getName();
+                        return CharacterDto.builder()
+                                .name(c.getName())
+                                .aliases(c.getAliases())
+                                .description(c.getDescription())
+                                .relationships(c.getRelationships())
+                                .chatCharacterId(chatCharId)  // Assign unique ID
+                                .build();
+                    })
                     .collect(Collectors.toList());
 
             return SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyCreation.getStoryDataId())
+                    .chatCharacterId(null)  // Deprecated - 이제 각 캐릭터가 고유 ID를 가짐
                     .hasSelection(true)
                     .selectedCharacterNames(selectedNames)
                     .selectedCharacters(selectedCharacters)
@@ -566,7 +620,7 @@ public class StoryManagementService {
         log.info("StoryId: {}", storyId);
 
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         if (storyCreation.getStatus() != StoryCreation.CreationStatus.GAUGES_SELECTED) {
             throw new IllegalStateException("Cannot configure: current status is " + storyCreation.getStatus());
@@ -607,7 +661,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public StoryProgressResponseDto getProgress(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         return StoryProgressResponseDto.builder()
                 .storyId(storyCreation.getId())
@@ -626,7 +680,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public StoryResultResponseDto getResult(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         if (storyCreation.getStatus() != StoryCreation.CreationStatus.COMPLETED) {
             throw new IllegalStateException("Story generation is not completed yet");
@@ -673,7 +727,7 @@ public class StoryManagementService {
     @Transactional
     public void updateStoryStatus(String storyId, StoryCreation.CreationStatus status, String errorMessage) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found"));
 
         storyCreation.setStatus(status);
         storyCreation.setErrorMessage(errorMessage);
@@ -689,7 +743,7 @@ public class StoryManagementService {
     @Transactional(readOnly = true)
     public FullStoryDto getFullStoryData(String storyId) {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new RuntimeException("Story not found: " + storyId));
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
         if (storyCreation.getStatus() != StoryCreation.CreationStatus.COMPLETED) {
             throw new IllegalStateException("Story generation is not completed yet");
