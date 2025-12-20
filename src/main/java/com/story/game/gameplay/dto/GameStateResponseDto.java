@@ -11,6 +11,7 @@ import java.util.Map;
 @Builder
 public class GameStateResponseDto {
     private String sessionId;
+    private String characterId;
     private String currentEpisodeId;
     private String currentNodeId;
     private Map<String, Integer> gaugeStates;

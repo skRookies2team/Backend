@@ -13,6 +13,8 @@ import com.story.game.creation.dto.TaskStartResponseDto;
 import com.story.game.creation.entity.StoryCreation;
 import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.rag.dto.CharacterIndexRequestDto;
+import com.story.game.rag.service.RagService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.mapper.StoryMapper;
 import com.story.game.story.repository.EpisodeEndingRepository;
@@ -45,10 +47,12 @@ public class SequentialGenerationService {
     private final EpisodeRepository episodeRepository;
     private final StoryNodeRepository storyNodeRepository;
     private final EpisodeEndingRepository episodeEndingRepository;
-    private final WebClient aiServerWebClient;
+    private final WebClient relayServerWebClient;
     private final ObjectMapper objectMapper;
     private final StoryMapper storyMapper;
     private final S3Service s3Service;
+    private final RagService ragService;
+    private final ImageGenerationService imageGenerationService;
     private final SequentialGenerationService self;
 
     public SequentialGenerationService(
@@ -57,20 +61,24 @@ public class SequentialGenerationService {
             EpisodeRepository episodeRepository,
             StoryNodeRepository storyNodeRepository,
             EpisodeEndingRepository episodeEndingRepository,
-            WebClient aiServerWebClient,
+            WebClient relayServerWebClient,
             ObjectMapper objectMapper,
             StoryMapper storyMapper,
             S3Service s3Service,
+            RagService ragService,
+            ImageGenerationService imageGenerationService,
             @org.springframework.context.annotation.Lazy SequentialGenerationService self) {
         this.storyCreationRepository = storyCreationRepository;
         this.storyDataRepository = storyDataRepository;
         this.episodeRepository = episodeRepository;
         this.storyNodeRepository = storyNodeRepository;
         this.episodeEndingRepository = episodeEndingRepository;
-        this.aiServerWebClient = aiServerWebClient;
+        this.relayServerWebClient = relayServerWebClient;
         this.objectMapper = objectMapper;
         this.storyMapper = storyMapper;
         this.s3Service = s3Service;
+        this.ragService = ragService;
+        this.imageGenerationService = imageGenerationService;
         this.self = self;
     }
 
@@ -94,6 +102,12 @@ public class SequentialGenerationService {
 
         if (storyCreation.getStatus() != StoryCreation.CreationStatus.CONFIGURED) {
             throw new IllegalStateException("Cannot start generation: current status is " + storyCreation.getStatus());
+        }
+
+        // 캐릭터 선택 필수 검증
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            throw new IllegalStateException("Characters must be selected before starting story generation. Please select 1-2 characters first.");
         }
 
         storyCreation.setStatus(StoryCreation.CreationStatus.GENERATING);
@@ -154,8 +168,8 @@ public class SequentialGenerationService {
             log.info("📤 Sending AI request to: /generate-next-episode");
             log.info("📦 Request payload - episodeOrder: {}, has previousEpisode: {}", episodeOrder, previousEpisode != null);
 
-            EpisodeDto newEpisodeDto = aiServerWebClient.post()
-                    .uri("/generate-next-episode")
+            EpisodeDto newEpisodeDto = relayServerWebClient.post()
+                    .uri("/ai/generate-next-episode")
                     .bodyValue(aiRequest)
                     .retrieve()
                     .bodyToMono(EpisodeDto.class)
@@ -204,7 +218,12 @@ public class SequentialGenerationService {
                     episodeEndingRepository.save(endingEntity);
                 }
             }
-            log.info("[LOG-STEP 7] Episode endings processed. Uploading snapshot to S3...");
+            log.info("[LOG-STEP 7] Episode endings processed. Generating images for root and ending nodes...");
+
+            // Generate images for root and ending nodes
+            generateImagesForEpisode(storyCreation.getId(), newEpisodeEntity, newEpisodeDto);
+
+            log.info("[LOG-STEP 8] Image generation completed. Uploading snapshot to S3...");
 
             // 2. Create a JSON snapshot and upload to S3
             FullStoryDto fullStoryForS3 = storyMapper.buildFullStoryDtoFromDb(storyCreation);
@@ -227,6 +246,7 @@ public class SequentialGenerationService {
                 // Create the final StoryData entity for gameplay
                 StoryData storyData = StoryData.builder()
                     .title(storyCreation.getTitle())
+                    .genre(storyCreation.getGenre())
                     .description(storyCreation.getDescription())
                     .storyFileKey(storyCreation.getS3FileKey())
                     .totalEpisodes(episodeRepository.findByStoryAndOrder(storyCreation, totalEpisodes).map(e -> e.getOrder()).orElse(0))
@@ -234,6 +254,9 @@ public class SequentialGenerationService {
                     .build();
                 storyDataRepository.save(storyData);
                 storyCreation.setStoryDataId(storyData.getId());
+
+                // 캐릭터 인덱싱은 사용자가 스텝 2에서 캐릭터 선택 시 자동으로 수행됩니다.
+                log.info("Story generation completed. Character indexing was done when user selected characters.");
             } else {
                 storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
                 storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");
@@ -241,7 +264,9 @@ public class SequentialGenerationService {
             storyCreationRepository.save(storyCreation);
 
             log.info("[LOG-STEP 9] Progress updated. Task finished successfully.");
-            return newEpisodeDto;
+            log.info("[LOG-STEP 10] Mapping new episode entity back to DTO for response.");
+            EpisodeDto responseDto = storyMapper.toEpisodeDto(newEpisodeEntity);
+            return responseDto;
 
         } catch (Exception e) {
             log.error("Episode generation task failed for storyId: {}", storyId, e);
@@ -306,8 +331,8 @@ public class SequentialGenerationService {
 
     public boolean checkAiServerHealth() {
         try {
-            String response = aiServerWebClient.get()
-                .uri("/health") // Assuming AI server has a /health endpoint
+            String response = relayServerWebClient.get()
+                .uri("/ai/health") // Relay server health endpoint
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
@@ -350,4 +375,67 @@ public class SequentialGenerationService {
                 .build();
         generationTasks.put(taskId, progressDto);
     }
+
+    /**
+     * Generate images for root and ending nodes in an episode
+     */
+    private void generateImagesForEpisode(
+        String storyCreationId,
+        Episode episode,
+        EpisodeDto episodeDto
+    ) {
+        log.info("Starting image generation for episode {} (order={})",
+            episode.getId(), episode.getOrder());
+
+        // Find the root node (depth = 0) for this episode
+        com.story.game.story.entity.StoryNode rootNode = storyNodeRepository.findByEpisodeAndDepth(episode, 0)
+            .orElse(null);
+
+        if (rootNode == null) {
+            log.warn("No root node found for episode {}", episode.getId());
+            return;
+        }
+
+        // Recursively process all nodes in the episode
+        processNodeTreeForImages(
+            storyCreationId,
+            rootNode,
+            episode.getTitle(),
+            episode.getOrder()
+        );
+    }
+
+    /**
+     * Recursively process node tree to generate images for root and ending nodes
+     */
+    private void processNodeTreeForImages(
+        String storyCreationId,
+        com.story.game.story.entity.StoryNode node,
+        String episodeTitle,
+        Integer episodeOrder
+    ) {
+        if (node == null) {
+            return;
+        }
+
+        // Generate image for this node if needed (root or ending)
+        imageGenerationService.generateAndSaveNodeImage(
+            storyCreationId, node, episodeTitle, episodeOrder
+        );
+
+        // Recursively process child nodes
+        if (node.getOutgoingChoices() != null) {
+            for (com.story.game.story.entity.StoryChoice choice : node.getOutgoingChoices()) {
+                if (choice.getDestinationNode() != null) {
+                    processNodeTreeForImages(
+                        storyCreationId,
+                        choice.getDestinationNode(),
+                        episodeTitle,
+                        episodeOrder
+                    );
+                }
+            }
+        }
+    }
+
 }

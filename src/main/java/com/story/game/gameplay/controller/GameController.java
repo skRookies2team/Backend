@@ -228,6 +228,31 @@ public class GameController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Get selected characters for NPC chat by storyDataId
+     * 프론트엔드가 StoryData ID로 선택된 캐릭터를 조회할 수 있도록 지원
+     */
+    @GetMapping("/stories/{storyDataId}/selected-characters")
+    @io.swagger.v3.oas.annotations.Operation(
+            summary = "선택된 NPC 캐릭터 조회 (StoryDataId 기반)",
+            description = "StoryData ID로 선택된 NPC 캐릭터 목록을 조회합니다. 게임 플레이 중 대화 가능한 NPC를 확인할 수 있습니다."
+    )
+    public ResponseEntity<com.story.game.creation.dto.SelectedCharactersResponseDto> getSelectedCharactersByStoryDataId(
+            @PathVariable Long storyDataId) {
+
+        log.info("=== Get Selected Characters by StoryDataId ===");
+        log.info("StoryDataId: {}", storyDataId);
+
+        com.story.game.creation.dto.SelectedCharactersResponseDto response =
+                gameService.getSelectedCharactersByStoryDataId(storyDataId);
+
+        log.info("Selected characters retrieved: hasSelection={}, count={}",
+                response.isHasSelection(),
+                response.getSelectedCharacters() != null ? response.getSelectedCharacters().size() : 0);
+
+        return ResponseEntity.ok(response);
+    }
+
 }
 
 

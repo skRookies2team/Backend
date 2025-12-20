@@ -13,6 +13,7 @@ public class StoryUploadResponseDto {
 
     private String storyId;
     private String title;
+    private String genre;
     private StoryCreation.CreationStatus status;
     private LocalDateTime createdAt;
 }

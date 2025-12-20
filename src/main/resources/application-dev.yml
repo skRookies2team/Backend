@@ -26,7 +26,7 @@ aws:
 
 # AI 서버
 ai-server:
-  url: http://localhost:8000
+  url: ${AI_SERVER_URL:http://localhost:8000}
 
 # Logging
 logging:

@@ -25,6 +25,7 @@ public class StoryResultResponseDto {
     @Builder
     public static class MetadataData {
         private String title;
+        private String genre;
         private String description;
         private Integer totalEpisodes;
         private Integer totalNodes;

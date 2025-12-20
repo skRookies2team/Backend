@@ -68,6 +68,15 @@ public class StoryEditingService {
             SubtreeRegenerationRequestDto aiRequest = buildAiRequest(storyCreation, episode, sourceNode, requestDto);
 
             log.info("📤 Calling AI server for subtree regeneration...");
+            log.info("Request summary present: {}", aiRequest.getSummary() != null);
+            log.info("Request charactersJson present: {}", aiRequest.getCharactersJson() != null);
+            log.info("Request gaugesJson present: {}", aiRequest.getGaugesJson() != null);
+            log.info("Request novelContext present: {}, length: {}",
+                aiRequest.getNovelContext() != null,
+                aiRequest.getNovelContext() != null ? aiRequest.getNovelContext().length() : 0);
+            log.info("StoryCreation novelText present: {}, length: {}",
+                storyCreation.getNovelText() != null,
+                storyCreation.getNovelText() != null ? storyCreation.getNovelText().length() : 0);
 
             List<StoryNodeDto> regeneratedChildren = callAiRegenerationApi(aiRequest).block();
 
@@ -117,6 +126,10 @@ public class StoryEditingService {
                 .novelContext(storyCreation.getNovelText())
                 .previousChoices(List.of()) // This might need more sophisticated logic
                 .selectedGaugeIds(selectedGaugeIds)
+                // Add cached analysis data for performance optimization
+                .summary(storyCreation.getSummary())
+                .charactersJson(storyCreation.getCharactersJson())
+                .gaugesJson(storyCreation.getGaugesJson())
                 .build();
     }
 

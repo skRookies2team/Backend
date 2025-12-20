@@ -15,6 +15,8 @@ import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.gameplay.dto.GameStateResponseDto;
 import com.story.game.gameplay.entity.GameSession;
 import com.story.game.gameplay.repository.GameSessionRepository;
+import com.story.game.rag.dto.GameProgressUpdateRequestDto;
+import com.story.game.rag.service.RagService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.entity.EpisodeEnding;
 import com.story.game.story.entity.StoryChoice;
@@ -41,6 +43,7 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,9 +62,14 @@ public class GameService {
     private final StoryCreationRepository storyCreationRepository;
     private final EpisodeEndingRepository episodeEndingRepository;
     private final StoryMapper storyMapper;
+    private final com.story.game.infrastructure.s3.S3Service s3Service;
+
+    @Value("${aws.s3.bucket}")
+    private String s3BucketName;
 
     // [SpEL] 파서 인스턴스 생성
     private final ExpressionParser parser = new SpelExpressionParser();
+    private final RagService ragService;
 
     @Transactional
     public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
@@ -69,6 +77,15 @@ public class GameService {
                 .orElseThrow(() -> new RuntimeException("Story not found: " + storyDataId));
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
                 .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryData: " + storyData.getId()));
+
+        // 캐릭터 선택 필수 검증
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            throw new IllegalStateException("Characters must be selected to start the game. NPC chatbot requires character selection.");
+        }
+
+        // Extract character ID for RAG integration
+        String characterId = extractCharacterIdFromJson(storyCreation.getSelectedCharactersForChatJson());
 
         Episode firstEpisode = episodeRepository.findByStoryAndOrder(storyCreation, 1)
                 .orElseThrow(() -> new RuntimeException("First episode not found"));
@@ -96,6 +113,8 @@ public class GameService {
         GameSession session = GameSession.builder()
                 .user(user)
                 .storyDataId(storyDataId)
+                .storyCreationId(storyCreation.getId())
+                .selectedCharacterId(characterId)
                 .currentEpisodeId(firstEpisode.getId().toString())
                 .currentNodeId(rootNode.getId().toString())
                 .gaugeStates(initialGauges)
@@ -107,7 +126,12 @@ public class GameService {
         session = gameSessionRepository.save(session);
         log.info("Game session created for user: {} with sessionId: {}", user.getUsername(), session.getId());
 
-        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(firstEpisode));
+        String imageUrl = generateNodeImage(
+                session.getStoryCreationId(),
+                rootNode.getId().toString(),
+                storyMapper.toStoryNodeDto(rootNode),
+                storyMapper.toEpisodeDto(firstEpisode)
+        );
 
         return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, imageUrl);
     }
@@ -142,7 +166,12 @@ public class GameService {
 
         boolean isFirstNodeOfEpisode = currentNode.getDepth() == 0;
 
-        String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(currentNode), storyMapper.toEpisodeDto(currentEpisode));
+        String imageUrl = generateNodeImage(
+                session.getStoryCreationId(),
+                session.getCurrentNodeId(),
+                storyMapper.toStoryNodeDto(currentNode),
+                storyMapper.toEpisodeDto(currentEpisode)
+        );
 
         return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, imageUrl);
     }
@@ -192,6 +221,16 @@ public class GameService {
             session.setCurrentNodeId(nextNode.getId().toString());
             session.getVisitedNodes().add(nextNode.getId().toString());
 
+            // 다음 선택지로 넘어갈 때 현재 스토리의 대화 내역만 삭제
+            try {
+                String storyId = session.getStoryCreationId();
+                ragService.deleteConversationsByStoryId(user.getUsername(), storyId);
+                log.info("Deleted conversations for user: {} and story: {} on choice selection",
+                        user.getUsername(), storyId);
+            } catch (Exception e) {
+                log.warn("Failed to delete conversations (non-critical): {}", e.getMessage());
+            }
+
             if (nextNode.getNodeType() != null) {
                 String nodeType = nextNode.getNodeType().toUpperCase();
                 if (nodeType.equals("ENDING")) {
@@ -204,12 +243,45 @@ public class GameService {
 
             gameSessionRepository.save(session);
 
+
+            // NPC AI에 게임 진행 상황 업데이트 (비동기, 실패해도 게임 진행에 영향 없음)
+            try {
+                // StoryDataId null 체크
+                if (session.getStoryCreationId() == null) {
+                    log.warn("StoryCreationId is null, skipping NPC AI update for session: {}", session.getId());
+                } else {
+                    String progressContent = buildProgressContent(selectedChoice, currentNode, nextNode);
+
+                    GameProgressUpdateRequestDto updateRequest = GameProgressUpdateRequestDto.builder()
+                            .characterId(session.getStoryCreationId())  // StoryCreation ID를 session_id로 사용
+                            .content(progressContent)
+                            .metadata(Map.of(
+                                    "nodeId", nextNode.getId().toString(),
+                                    "depth", nextNode.getDepth(),
+                                    "episodeId", nextNode.getEpisode().getId().toString(),
+                                    "gameSessionId", session.getId(),  // 게임 세션 ID (참고용)
+                                    "timestamp", System.currentTimeMillis()
+                            ))
+                            .build();
+
+                    ragService.updateGameProgress(updateRequest);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to update game progress to NPC AI (non-critical): {}", e.getMessage());
+            }
+
+
             List<StoryChoice> nextNodeChoices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(nextNode);
             if (nextNodeChoices.isEmpty()) {
                 return handleEpisodeEnd(session);
             }
 
-            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(nextNode), storyMapper.toEpisodeDto(currentNode.getEpisode()));
+            String imageUrl = generateNodeImage(
+                    session.getStoryCreationId(),
+                    nextNode.getId().toString(),
+                    storyMapper.toStoryNodeDto(nextNode),
+                    storyMapper.toEpisodeDto(currentNode.getEpisode())
+            );
 
             return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, imageUrl);
         } else {
@@ -254,7 +326,12 @@ public class GameService {
             session.setAccumulatedTags(new HashMap<>());
             gameSessionRepository.save(session);
 
-            String imageUrl = generateNodeImage(storyMapper.toStoryNodeDto(rootNode), storyMapper.toEpisodeDto(nextEpisode));
+            String imageUrl = generateNodeImage(
+                    session.getStoryCreationId(),
+                    rootNode.getId().toString(),
+                    storyMapper.toStoryNodeDto(rootNode),
+                    storyMapper.toEpisodeDto(nextEpisode)
+            );
             GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, imageUrl);
             response.setIsEpisodeEnd(true);
             response.setEpisodeEnding(storyMapper.toEpisodeEndingDto(matchedEnding));
@@ -410,6 +487,7 @@ public class GameService {
 
         return GameStateResponseDto.builder()
                 .sessionId(session.getId())
+                .characterId(session.getSelectedCharacterId())
                 .currentEpisodeId(session.getCurrentEpisodeId())
                 .currentNodeId(session.getCurrentNodeId())
                 .gaugeStates(session.getGaugeStates())
@@ -454,18 +532,45 @@ public class GameService {
         }
     }
 
-    private String generateNodeImage(StoryNodeDto node, EpisodeDto episode) {
+    private String generateNodeImage(String storyId, String nodeId, StoryNodeDto node, EpisodeDto episode) {
+        // Check if image already exists in database
+        Optional<StoryNode> nodeOpt = storyNodeRepository.findById(UUID.fromString(nodeId));
+        if (nodeOpt.isPresent() && nodeOpt.get().getImageFileKey() != null) {
+            // Image exists, generate presigned download URL
+            String presignedUrl = s3Service.generatePresignedDownloadUrl(
+                nodeOpt.get().getImageFileKey()
+            );
+            log.info("Using existing image for node {}: {}", nodeId, presignedUrl);
+            return presignedUrl;
+        }
+
+        // Image doesn't exist, generate new one
+        log.info("No existing image found for node {}, generating new image", nodeId);
+
         try {
             com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
+                    .storyId(storyId)
+                    .nodeId(nodeId)
                     .nodeText(node.getText())
                     .situation(node.getDetails() != null ? node.getDetails().getSituation() : null)
                     .npcEmotions(node.getDetails() != null ? node.getDetails().getNpcEmotions() : null)
                     .episodeTitle(episode.getTitle())
                     .episodeOrder(episode.getOrder())
                     .nodeDepth(node.getDepth())
+                    .novelS3Bucket(s3BucketName)
+                    .novelS3Key("novels/original/" + storyId + ".txt")
                     .build();
 
             com.story.game.ai.dto.ImageGenerationResponseDto response = relayServerClient.generateImage(request);
+
+            // Save to database for future use
+            if (nodeOpt.isPresent()) {
+                StoryNode nodeEntity = nodeOpt.get();
+                nodeEntity.setImageUrl(response.getImageUrl());
+                nodeEntity.setImageFileKey(response.getFileKey());
+                storyNodeRepository.save(nodeEntity);
+            }
+
             return response.getImageUrl();
         } catch (Exception e) {
             log.warn("Failed to generate image: {}", e.getMessage());
@@ -545,5 +650,182 @@ public class GameService {
                 .gaugeDefinitions(gaugeDefinitions)
                 .completedEpisodesCount(session.getCompletedEpisodes() != null ? session.getCompletedEpisodes().size() : 0)
                 .build();
+    }
+
+
+    /**
+     * 게임 진행 상황을 텍스트로 변환
+     * JSON 형식의 노드 정보(NPC 감정, 관계 변화 등)를 파싱하여 포함
+     */
+    private String buildProgressContent(StoryChoice choice, StoryNode fromNode, StoryNode toNode) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("=== 게임 진행 상황 ===").append("\n\n");
+
+        // 이전 노드
+        sb.append("이전 상황:\n");
+        sb.append(fromNode.getText()).append("\n\n");
+
+        // 플레이어 선택
+        sb.append("플레이어의 선택:\n");
+        sb.append("'").append(choice.getText()).append("'").append("\n\n");
+
+        // 선택의 태그 정보
+        if (choice.getTags() != null && !choice.getTags().isEmpty()) {
+            try {
+                List<String> tags = objectMapper.readValue(choice.getTags(), new TypeReference<List<String>>() {});
+                if (!tags.isEmpty()) {
+                    sb.append("선택의 의미: ").append(String.join(", ", tags)).append("\n\n");
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse choice tags for progress content", e);
+            }
+        }
+
+        // 즉각 반응
+        if (choice.getImmediateReaction() != null && !choice.getImmediateReaction().isEmpty()) {
+            sb.append("선택 직후 반응:\n");
+            sb.append(choice.getImmediateReaction()).append("\n\n");
+        }
+
+        // 현재 노드
+        sb.append("현재 상황:\n");
+        sb.append(toNode.getText()).append("\n");
+
+        // 상황 정보
+        if (toNode.getSituation() != null && !toNode.getSituation().isEmpty()) {
+            sb.append("\n상세 상황: ").append(toNode.getSituation()).append("\n");
+        }
+
+        // NPC 감정 정보 파싱
+        if (toNode.getNpcEmotions() != null && !toNode.getNpcEmotions().isEmpty()) {
+            try {
+                Map<String, String> emotions = objectMapper.readValue(toNode.getNpcEmotions(),
+                        new TypeReference<Map<String, String>>() {});
+                if (!emotions.isEmpty()) {
+                    sb.append("\nNPC 감정 상태:\n");
+                    emotions.forEach((npc, emotion) ->
+                        sb.append("- ").append(npc).append(": ").append(emotion).append("\n")
+                    );
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse NPC emotions for progress content", e);
+            }
+        }
+
+        // 관계 변화 정보 파싱
+        if (toNode.getRelationsUpdate() != null && !toNode.getRelationsUpdate().isEmpty()) {
+            try {
+                Map<String, String> relations = objectMapper.readValue(toNode.getRelationsUpdate(),
+                        new TypeReference<Map<String, String>>() {});
+                if (!relations.isEmpty()) {
+                    sb.append("\n관계 변화:\n");
+                    relations.forEach((character, change) ->
+                        sb.append("- ").append(character).append(": ").append(change).append("\n")
+                    );
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse relations update for progress content", e);
+            }
+        }
+
+        // 에피소드 정보
+        if (toNode.getEpisode() != null) {
+            sb.append("\n에피소드: ").append(toNode.getEpisode().getTitle());
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Extract character ID from selected characters JSON
+     * Used for RAG integration - extracts the first character ID
+     */
+    private String extractCharacterIdFromJson(String selectedCharactersJson) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(selectedCharactersJson);
+            if (root.isArray() && root.size() > 0) {
+                return root.get(0).asText();
+            }
+            throw new IllegalStateException("No character selected");
+        } catch (Exception e) {
+            log.error("Failed to parse character selection JSON", e);
+            throw new IllegalStateException("Failed to parse character selection", e);
+        }
+    }
+
+    /**
+     * Get selected characters by StoryData ID
+     * 프론트엔드가 StoryData ID로 선택된 캐릭터를 조회할 수 있도록 지원
+     */
+    @Transactional(readOnly = true)
+    public com.story.game.creation.dto.SelectedCharactersResponseDto getSelectedCharactersByStoryDataId(Long storyDataId) {
+        log.info("=== Get Selected Characters by StoryDataId ===");
+        log.info("StoryDataId: {}", storyDataId);
+
+        // StoryData ID로 StoryCreation 찾기
+        StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyDataId)
+                .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryDataId: " + storyDataId));
+
+        log.info("Found StoryCreation ID: {}", storyCreation.getId());
+
+        // 선택된 캐릭터 확인
+        if (storyCreation.getSelectedCharactersForChatJson() == null ||
+            storyCreation.getSelectedCharactersForChatJson().isBlank()) {
+            return com.story.game.creation.dto.SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyDataId)
+                    .chatCharacterId(storyCreation.getId())  // NPC 대화용 - storyId와 동일
+                    .hasSelection(false)
+                    .selectedCharacterNames(List.of())
+                    .selectedCharacters(List.of())
+                    .build();
+        }
+
+        try {
+            // 선택된 캐릭터 이름 파싱
+            List<String> selectedNames = objectMapper.readValue(
+                    storyCreation.getSelectedCharactersForChatJson(),
+                    new TypeReference<List<String>>() {}
+            );
+
+            // 전체 캐릭터 파싱
+            List<com.story.game.common.dto.CharacterDto> allCharacters = new ArrayList<>();
+            if (storyCreation.getCharactersJson() != null && !storyCreation.getCharactersJson().isBlank()) {
+                allCharacters = objectMapper.readValue(
+                        storyCreation.getCharactersJson(),
+                        new TypeReference<List<com.story.game.common.dto.CharacterDto>>() {}
+                );
+            }
+
+            // 선택된 캐릭터만 필터링하고 각 캐릭터에 chatCharacterId 할당
+            List<com.story.game.common.dto.CharacterDto> selectedCharacters = allCharacters.stream()
+                    .filter(c -> selectedNames.contains(c.getName()))
+                    .map(c -> {
+                        // Generate unique chatCharacterId for each character
+                        String chatCharId = storyCreation.getId() + "_" + c.getName();
+                        return com.story.game.common.dto.CharacterDto.builder()
+                                .name(c.getName())
+                                .aliases(c.getAliases())
+                                .description(c.getDescription())
+                                .relationships(c.getRelationships())
+                                .chatCharacterId(chatCharId)  // Assign unique ID
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            return com.story.game.creation.dto.SelectedCharactersResponseDto.builder()
+                    .storyId(storyCreation.getId())
+                    .storyDataId(storyDataId)
+                    .chatCharacterId(null)  // Deprecated - 이제 각 캐릭터가 고유 ID를 가짐
+                    .hasSelection(true)
+                    .selectedCharacterNames(selectedNames)
+                    .selectedCharacters(selectedCharacters)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to parse selected characters for StoryDataId: {}", storyDataId, e);
+            throw new RuntimeException("Failed to retrieve selected characters: " + e.getMessage());
+        }
     }
 }

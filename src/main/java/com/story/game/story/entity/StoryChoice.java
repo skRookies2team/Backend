@@ -34,6 +34,10 @@ public class StoryChoice {
     @Column(columnDefinition = "TEXT")
     private String tags;
 
+    @Lob
+    @Column(name = "immediate_reaction", columnDefinition = "TEXT")
+    private String immediateReaction;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_node_id", nullable = false)
     private StoryNode sourceNode;

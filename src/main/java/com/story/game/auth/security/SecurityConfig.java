@@ -58,6 +58,9 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**",
                                        "/swagger-resources/**", "/webjars/**").permitAll()
 
+                        // Basic assets and error page
+                        .requestMatchers("/error", "/favicon.ico").permitAll()
+
                         // 그 외 모든 요청은 인증 필요 (작성, 수정, 삭제 등)
                         .anyRequest().authenticated()
                 )

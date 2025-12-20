@@ -8,7 +8,10 @@
       "Bash(taskkill //F //PID 7224)",
       "Bash(./gradlew build:*)",
       "Bash(git reset:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(./gradlew bootRun:*)",
+      "Bash(ls:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

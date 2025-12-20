@@ -148,9 +148,12 @@ public class StoryMapper {
             StoryNodeDto childDto = childDtos.get(i);
             // Simplified: assumes the first choice in the DTO corresponds to the edge to this child.
             // A more robust implementation might involve matching choices to children via an ID.
-            StoryChoiceDto choiceDto = (childDto.getChoices() != null && !childDto.getChoices().isEmpty())
-                    ? childDto.getChoices().get(0)
-                    : StoryChoiceDto.builder().text("Continue").build();
+            StoryChoiceDto choiceDto;
+            if (childDto.getChoices() != null && !childDto.getChoices().isEmpty()) {
+                choiceDto = childDto.getChoices().get(0);
+            } else {
+                choiceDto = StoryChoiceDto.builder().text("Continue").build();
+            }
 
             StoryChoice choice = toStoryChoiceEntity(choiceDto, sourceNode, currentSize + i);
             StoryNode childNode = toStoryNodeEntityRecursive(childDto, episode, choice);
@@ -250,6 +253,7 @@ public class StoryMapper {
                 .text(dto.getText())
                 .choiceOrder(order)
                 .tags(tagsJson)
+                .immediateReaction(dto.getImmediateReaction())
                 .build();
     }
 
@@ -323,7 +327,13 @@ public class StoryMapper {
                 .text(node.getText())
                 .nodeType(node.getNodeType())
                 .details(details)
-                .choices(node.getOutgoingChoices() != null ? node.getOutgoingChoices().stream().map(this::toStoryChoiceDto).collect(Collectors.toList()) : Collections.emptyList());
+                .choices(
+                        node.getOutgoingChoices() != null ?
+                        node.getOutgoingChoices().stream()
+                                .map(this::toStoryChoiceDto)
+                                .collect(Collectors.toList())
+                        : Collections.emptyList()
+                );
 
         // Recursively map children with visited nodes tracking
         List<StoryNodeDto> children = node.getOutgoingChoices().stream()
@@ -384,6 +394,7 @@ public class StoryMapper {
         return StoryChoiceDto.builder()
                 .text(choice.getText())
                 .tags(tags)
+                .immediateReaction(choice.getImmediateReaction())
                 .build();
     }
 

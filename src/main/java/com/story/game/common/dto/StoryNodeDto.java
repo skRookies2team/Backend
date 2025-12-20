@@ -14,7 +14,7 @@ public class StoryNodeDto {
     private Integer depth;
     private String text;
     private StoryNodeDetailDto details;
-    private List<StoryChoiceDto> choices;
+    private List<StoryChoiceDto> choices;  // ✅ Map에서 List로 변경
 
     @JsonProperty("parent_id")
     private String parentId;

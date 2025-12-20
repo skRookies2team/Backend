@@ -27,7 +27,7 @@ public class WebClientConfig {
     @Value("${relay-server.url:http://localhost:8081}")
     private String relayServerUrl;
 
-    @Value("${relay-server.timeout:30000}") // 30초 기본값
+    @Value("${relay-server.timeout:600000}") // 10분 기본값 (AI 분석/생성 시간 고려)
     private int relayTimeout;
 
     @Bean

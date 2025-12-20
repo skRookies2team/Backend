@@ -23,6 +23,9 @@ public class StoryData {
     @Column(nullable = false)
     private String title;
 
+    @Column(length = 100)
+    private String genre;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
