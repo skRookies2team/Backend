@@ -31,10 +31,26 @@ public class RefreshToken {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(name = "last_used_at")
+    private LocalDateTime lastUsedAt;
+
     public boolean isExpired() {
         return LocalDateTime.now().isAfter(expiryDate);
     }
 
+    /**
+     * 리프레시 토큰 마지막 사용 시간 업데이트
+     * 토큰 갱신 시 호출하여 사용 추적
+     */
+    public void updateLastUsedAt() {
+        this.lastUsedAt = LocalDateTime.now();
+    }
+
+    /**
+     * @deprecated 리프레시 토큰은 갱신하지 않고 유지합니다.
+     * 대신 updateLastUsedAt()을 사용하세요.
+     */
+    @Deprecated
     public void updateToken(String newToken, LocalDateTime newExpiryDate) {
         this.token = newToken;
         this.expiryDate = newExpiryDate;
