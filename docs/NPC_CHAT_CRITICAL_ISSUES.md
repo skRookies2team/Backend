@@ -315,16 +315,3 @@ interface SelectedCharactersResponseDto {
    ```
 
 ---
-
-## 변경 이력
-
-- **2025-12-20 (v3)**: Character ID 불일치 문제 해결
-  - `chatCharacterId` 필드 추가
-  - 현재 시스템 구조 분석 및 문서화
-  - 프론트엔드 수정 가이드 작성
-
-- **2025-12-20 (v2)**: 응답에 스토리 식별자 추가
-  - `storyId`와 `storyDataId` 필드 추가
-
-- **2025-12-20 (v1)**: StoryDataId 기반 API 추가
-  - 새로운 엔드포인트 추가

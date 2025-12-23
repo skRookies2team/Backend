@@ -432,6 +432,35 @@ public class StoryManagementService {
                     .filter(c -> selectedNames.contains(c.getName()))
                     .collect(Collectors.toList());
 
+            // ========== STEP 1: 소설 학습 (RAG 시스템에 소설 원본 인덱싱) ==========
+            if (storyCreation.getS3FileKey() != null && !storyCreation.getS3FileKey().isBlank()) {
+                log.info("=== Indexing Novel to RAG System ===");
+                log.info("Story: {} ({})", storyCreation.getTitle(), storyCreation.getId());
+                log.info("S3 File Key: {}", storyCreation.getS3FileKey());
+
+                try {
+                    NovelIndexRequestDto novelIndexRequest = NovelIndexRequestDto.builder()
+                            .storyId(storyCreation.getId())
+                            .title(storyCreation.getTitle())
+                            .fileKey(storyCreation.getS3FileKey())
+                            .bucket(bucketName)
+                            .build();
+
+                    Boolean novelIndexResult = ragService.indexNovel(novelIndexRequest);
+
+                    if (novelIndexResult) {
+                        log.info("✅ Novel indexed successfully for story: {}", storyCreation.getId());
+                    } else {
+                        log.warn("⚠️ Novel indexing failed for story: {}", storyCreation.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to index novel (non-critical): {}", e.getMessage(), e);
+                }
+            } else {
+                log.warn("⚠️ No S3 file key found for story: {}. Skipping novel indexing.", storyCreation.getId());
+            }
+
+            // ========== STEP 2: 캐릭터 정보 설정 ==========
             // Build story context (공통 정보)
             StringBuilder storyContext = new StringBuilder();
             storyContext.append("=== 소설 정보 ===").append(System.lineSeparator());
@@ -461,7 +490,7 @@ public class StoryManagementService {
             }
             storyContext.append(System.lineSeparator());
 
-            // 각 캐릭터마다 개별적으로 인덱싱
+            // 각 캐릭터마다 개별적으로 설정
             int successCount = 0;
             int failCount = 0;
 
@@ -504,41 +533,31 @@ public class StoryManagementService {
                         }
                     }
 
-                    // Create index request for this character
-                    CharacterIndexRequestDto indexRequest = CharacterIndexRequestDto.builder()
-                            .characterId(characterId)  // Unique ID per character
-                            .name(character.getName())
-                            .description(characterDescription.toString())
-                            .personality(character.getDescription())
-                            .background(storyContext.toString())
-                            .dialogueSamples(null)
-                            .relationships(character.getRelationships())
-                            .additionalInfo(java.util.Map.of(
-                                    "storyId", storyCreation.getId().toString(),
-                                    "storyTitle", storyCreation.getTitle(),
-                                    "genre", storyCreation.getGenre() != null ? storyCreation.getGenre() : "",
-                                    "characterName", character.getName()
-                            ))
+                    // Call RagService to set character information (not indexing)
+                    com.story.game.rag.dto.CharacterSetRequestDto setRequest =
+                        com.story.game.rag.dto.CharacterSetRequestDto.builder()
+                            .characterId(characterId)
+                            .characterName(character.getName())
+                            .characterDescription(characterDescription.toString())
                             .build();
 
-                    // Call RagService to index this character
-                    Boolean result = ragService.indexCharacter(indexRequest);
+                    Boolean result = ragService.setCharacter(setRequest);
 
                     if (result) {
                         successCount++;
-                        log.info("Character '{}' indexed successfully with ID: {}", character.getName(), characterId);
+                        log.info("✅ Character '{}' set successfully with ID: {}", character.getName(), characterId);
                     } else {
                         failCount++;
-                        log.warn("Character '{}' indexing failed with ID: {}", character.getName(), characterId);
+                        log.warn("⚠️ Character '{}' setting failed with ID: {}", character.getName(), characterId);
                     }
 
                 } catch (Exception e) {
                     failCount++;
-                    log.warn("Failed to index character '{}': {}", character.getName(), e.getMessage());
+                    log.warn("Failed to set character '{}': {}", character.getName(), e.getMessage());
                 }
             }
 
-            log.info("Character indexing completed - Success: {}, Failed: {}", successCount, failCount);
+            log.info("Character setting completed - Success: {}, Failed: {}", successCount, failCount);
 
         } catch (Exception e) {
             // 인덱싱 실패는 치명적이지 않으므로 경고만 로그
