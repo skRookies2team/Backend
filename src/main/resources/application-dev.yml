@@ -20,6 +20,7 @@ aws:
   s3:
     bucket: ${AWS_S3_BUCKET:story-game-dev}
     region: ${AWS_S3_REGION:ap-northeast-2}
+    endpoint: ${AWS_S3_ENDPOINT:}  # LocalStack 사용 시: http://localhost:4566
   credentials:
     access-key: ${AWS_ACCESS_KEY}
     secret-key: ${AWS_SECRET_KEY}
