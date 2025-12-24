@@ -31,6 +31,6 @@ public class CharacterIndexRequestDto {
     private String background;
 
     private List<String> dialogueSamples;
-    private List<String> relationships;
+    private Map<String, String> relationships;  // 캐릭터 간 관계 (key: 캐릭터명, value: 관계 설명)
     private Map<String, Object> additionalInfo;
 }

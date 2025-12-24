@@ -149,6 +149,12 @@ public class RagService {
             request.setConversationHistory(history);
         }
 
+        // 캐릭터 이름을 request에 설정 (RAG 서버 연동을 위해 필수)
+        if (request.getCharacterName() == null || request.getCharacterName().isEmpty()) {
+            request.setCharacterName(conversation.getCharacterName());
+            log.debug("Set characterName for RAG server: {}", conversation.getCharacterName());
+        }
+
         try {
             ChatMessageResponseDto response = relayServerWebClient.post()
                     .uri("/ai/chat/message")
