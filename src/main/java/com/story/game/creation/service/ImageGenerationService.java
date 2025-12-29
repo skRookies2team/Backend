@@ -4,6 +4,7 @@ import com.story.game.ai.dto.ImageGenerationRequestDto;
 import com.story.game.ai.dto.ImageGenerationResponseDto;
 import com.story.game.ai.dto.NovelStyleLearnRequestDto;
 import com.story.game.ai.service.RelayServerClient;
+import com.story.game.common.dto.ImageType;
 import com.story.game.creation.entity.StoryCreation;
 import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
@@ -68,6 +69,10 @@ public class ImageGenerationService {
             node.getId(), node.getDepth(), node.getNodeType());
 
         try {
+            // Determine image type
+            ImageType imageType = determineImageType(node);
+            log.debug("Determined image type for node {}: {}", node.getId(), imageType);
+
             // Generate S3 presigned URL for image upload
             String imageKey = "story-images/" + storyId + "/" + node.getId() + ".png";
             String imageS3Url = s3Service.generatePresignedUploadUrl(imageKey).getUrl();
@@ -82,6 +87,7 @@ public class ImageGenerationService {
                 .episodeTitle(episodeTitle)
                 .episodeOrder(episodeOrder)
                 .nodeDepth(node.getDepth())
+                .imageType(imageType)  // 이미지 타입 정보 포함
                 .novelS3Bucket(s3BucketName)
                 .novelS3Key("novels/original/" + storyId + ".txt")
                 .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
@@ -249,5 +255,23 @@ public class ImageGenerationService {
             log.error("Failed to download image from {}: {}", imageUrl, e.getMessage(), e);
             return null;
         }
+    }
+
+    /**
+     * Determine image type based on node properties
+     */
+    private ImageType determineImageType(StoryNode node) {
+        // Root nodes (depth=0) → EPISODE_START
+        if (node.getDepth() != null && node.getDepth() == 0) {
+            return ImageType.EPISODE_START;
+        }
+
+        // Ending nodes (no outgoing choices) → EPISODE_ENDING
+        if (node.getOutgoingChoices() == null || node.getOutgoingChoices().isEmpty()) {
+            return ImageType.EPISODE_ENDING;
+        }
+
+        // Other nodes → SCENE
+        return ImageType.SCENE;
     }
 }

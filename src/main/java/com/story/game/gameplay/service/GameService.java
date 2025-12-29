@@ -569,6 +569,7 @@ public class GameService {
                     .episodeTitle(episode.getTitle())
                     .episodeOrder(episode.getOrder())
                     .nodeDepth(node.getDepth())
+                    .imageType(imageType)  // 이미지 타입 정보 포함
                     .novelS3Bucket(s3BucketName)
                     .novelS3Key("novels/original/" + storyId + ".txt")
                     .build();
