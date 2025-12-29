@@ -72,6 +72,7 @@ public class GameService {
     // [SpEL] 파서 인스턴스 생성
     private final ExpressionParser parser = new SpelExpressionParser();
     private final RagService ragService;
+    private final BgmService bgmService;
 
     @Transactional
     public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
@@ -135,7 +136,15 @@ public class GameService {
                 storyMapper.toEpisodeDto(firstEpisode)
         );
 
-        return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, nodeImage);
+        // Get BGM for first node
+        com.story.game.gameplay.dto.BgmDto bgm = null;
+        try {
+            bgm = bgmService.getBgmForNode(storyDataId, rootNode.getId(), rootNode.getText());
+        } catch (Exception e) {
+            log.warn("Failed to get BGM for first node: {}", e.getMessage());
+        }
+
+        return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, nodeImage, bgm);
     }
 
     @Transactional(readOnly = true)
@@ -175,7 +184,15 @@ public class GameService {
                 storyMapper.toEpisodeDto(currentEpisode)
         );
 
-        return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, nodeImage);
+        // Get BGM for current node
+        com.story.game.gameplay.dto.BgmDto bgm = null;
+        try {
+            bgm = bgmService.getBgmForNode(session.getStoryDataId(), currentNode.getId(), currentNode.getText());
+        } catch (Exception e) {
+            log.warn("Failed to get BGM for current node: {}", e.getMessage());
+        }
+
+        return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, nodeImage, bgm);
     }
 
     @Transactional
@@ -285,7 +302,29 @@ public class GameService {
                     storyMapper.toEpisodeDto(currentNode.getEpisode())
             );
 
-            return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, nodeImage);
+            // Get BGM for current node (from cache or AI server)
+            com.story.game.gameplay.dto.BgmDto bgm = null;
+            try {
+                bgm = bgmService.getBgmForNode(
+                        session.getStoryDataId(),
+                        nextNode.getId(),
+                        nextNode.getText()
+                );
+                log.info("BGM retrieved for node {}: mood={}", nextNode.getId(),
+                        bgm != null ? bgm.getMood() : "null");
+            } catch (Exception e) {
+                log.warn("Failed to get BGM for node {}: {}", nextNode.getId(), e.getMessage());
+            }
+
+            // Pre-load BGM for next possible nodes (async, non-blocking)
+            try {
+                bgmService.preloadNextNodesBgm(session.getStoryDataId(), nextNodeChoices);
+                log.debug("Started pre-loading BGM for {} next nodes", nextNodeChoices.size());
+            } catch (Exception e) {
+                log.warn("Failed to start BGM pre-loading: {}", e.getMessage());
+            }
+
+            return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, nodeImage, bgm);
         } else {
             return handleEpisodeEnd(session);
         }
@@ -334,7 +373,15 @@ public class GameService {
                     storyMapper.toStoryNodeDto(rootNode),
                     storyMapper.toEpisodeDto(nextEpisode)
             );
-            GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, nodeImage);
+            // Get BGM for next episode root node
+            com.story.game.gameplay.dto.BgmDto bgm = null;
+            try {
+                bgm = bgmService.getBgmForNode(session.getStoryDataId(), rootNode.getId(), rootNode.getText());
+            } catch (Exception e) {
+                log.warn("Failed to get BGM for next episode root node: {}", e.getMessage());
+            }
+
+            GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, nodeImage, bgm);
             response.setIsEpisodeEnd(true);
             response.setEpisodeEnding(storyMapper.toEpisodeEndingDto(matchedEnding));
             return response;
@@ -462,7 +509,7 @@ public class GameService {
     }
 
     private GameStateResponseDto buildGameStateResponse(GameSession session, StoryCreation storyCreation,
-                                                        Episode episode, StoryNode node, boolean showIntro, NodeImageInfo nodeImage) {
+                                                        Episode episode, StoryNode node, boolean showIntro, NodeImageInfo nodeImage, com.story.game.gameplay.dto.BgmDto bgm) {
         List<StoryChoice> choices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(node);
         List<StoryChoiceDto> choiceDtos = choices.stream()
                 .map(storyMapper::toStoryChoiceDto)
@@ -501,6 +548,7 @@ public class GameService {
                 .nodeDetails(nodeDetails)
                 .choices(choiceDtos)
                 .nodeImage(nodeImage)
+                .bgm(bgm)
                 .gaugeDefinitions(gaugeDefinitions)
                 .isEpisodeEnd(false)
                 .isGameEnd(false)

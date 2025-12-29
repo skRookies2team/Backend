@@ -44,6 +44,9 @@ public class GameStateResponseDto {
         }
     }
 
+    // BGM information for the current node
+    private BgmDto bgm;
+
     // Gauge info for display
     private List<GaugeDto> gaugeDefinitions;
 
