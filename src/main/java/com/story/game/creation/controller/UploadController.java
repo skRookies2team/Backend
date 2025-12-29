@@ -170,10 +170,38 @@ public class UploadController {
         log.info("=== Generate Download URL Request ===");
         log.info("FileKey: {}", fileKey);
 
+        // Path Traversal 방지: 안전한 경로만 허용
+        validateFileKey(fileKey);
+
         String downloadUrl = s3Service.generatePresignedDownloadUrl(fileKey);
 
         log.info("Download URL generated for: {}", fileKey);
         return ResponseEntity.ok(downloadUrl);
+    }
+
+    /**
+     * 파일 경로 검증 (Path Traversal 방지)
+     */
+    private void validateFileKey(String fileKey) {
+        if (fileKey == null || fileKey.isBlank()) {
+            throw new IllegalArgumentException("File key cannot be empty");
+        }
+
+        // ".." 경로 탐색 방지
+        if (fileKey.contains("..")) {
+            throw new IllegalArgumentException("Invalid file path: path traversal detected");
+        }
+
+        // 절대 경로 방지
+        if (fileKey.startsWith("/") || fileKey.startsWith("\\")) {
+            throw new IllegalArgumentException("Invalid file path: absolute path not allowed");
+        }
+
+        // 허용된 경로 패턴만 통과
+        // uploads/, novels/, images/, story-images/, profile-images/ 등
+        if (!fileKey.matches("^(uploads|novels|images|story-images|profile-images|post-media)/.*")) {
+            throw new IllegalArgumentException("Invalid file path: unauthorized directory");
+        }
     }
 
     /**

@@ -13,6 +13,7 @@ import com.story.game.community.repository.LikeRepository;
 import com.story.game.community.repository.PostMediaRepository;
 import com.story.game.community.repository.PostRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.common.exception.ExternalServiceException;
 import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import lombok.RequiredArgsConstructor;
@@ -271,7 +272,7 @@ public class PostService {
                     .build();
 
         } catch (IOException e) {
-            throw new RuntimeException("Failed to upload post media: " + e.getMessage());
+            throw new ExternalServiceException("Failed to upload post media: " + e.getMessage(), e);
         }
     }
 

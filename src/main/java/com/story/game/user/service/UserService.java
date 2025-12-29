@@ -11,9 +11,11 @@ import com.story.game.achievement.entity.UserAchievement;
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.common.exception.ExternalServiceException;
 import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -131,6 +134,22 @@ public class UserService {
         }
 
         try {
+            // 기존 프로필 이미지가 있다면 S3에서 삭제
+            String oldProfileImageUrl = user.getProfileImageUrl();
+            if (oldProfileImageUrl != null && !oldProfileImageUrl.isEmpty()) {
+                try {
+                    // URL에서 fileKey 추출 (profile-images/ 경로 패턴 매칭)
+                    String oldFileKey = extractFileKeyFromUrl(oldProfileImageUrl);
+                    if (oldFileKey != null) {
+                        s3Service.deleteFile(oldFileKey);
+                        log.info("Deleted old profile image: {}", oldFileKey);
+                    }
+                } catch (Exception e) {
+                    // 기존 이미지 삭제 실패는 로그만 남기고 진행 (신규 업로드를 막지 않음)
+                    log.warn("Failed to delete old profile image: {}", e.getMessage());
+                }
+            }
+
             // 원본 파일명에서 확장자 추출
             String originalFilename = imageFile.getOriginalFilename();
             String extension = "";
@@ -158,7 +177,34 @@ public class UserService {
                     .build();
 
         } catch (IOException e) {
-            throw new RuntimeException("Failed to upload profile image: " + e.getMessage());
+            throw new ExternalServiceException("Failed to upload profile image: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * URL에서 S3 fileKey 추출
+     * Pre-signed URL 또는 일반 S3 URL에서 profile-images/로 시작하는 파일 경로를 추출
+     */
+    private String extractFileKeyFromUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return null;
+        }
+
+        // profile-images/ 패턴 찾기
+        int profileImagesIndex = url.indexOf("profile-images/");
+        if (profileImagesIndex == -1) {
+            return null;
+        }
+
+        // profile-images/부터 끝까지 또는 쿼리 파라미터 전까지 추출
+        String fileKey = url.substring(profileImagesIndex);
+
+        // 쿼리 파라미터가 있다면 제거 (Pre-signed URL의 경우)
+        int queryIndex = fileKey.indexOf("?");
+        if (queryIndex != -1) {
+            fileKey = fileKey.substring(0, queryIndex);
+        }
+
+        return fileKey;
     }
 }

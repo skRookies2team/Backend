@@ -6,6 +6,9 @@ import com.story.game.community.entity.StoryReview;
 import com.story.game.auth.entity.User;
 import com.story.game.community.repository.StoryReviewRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.common.entity.StoryData;
+import com.story.game.common.exception.ResourceNotFoundException;
+import com.story.game.common.repository.StoryDataRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +24,7 @@ public class ReviewService {
 
     private final StoryReviewRepository reviewRepository;
     private final UserRepository userRepository;
+    private final StoryDataRepository storyDataRepository;
 
     @Transactional
     public ReviewResponseDto createReview(String username, CreateReviewRequestDto request) {
@@ -64,12 +68,14 @@ public class ReviewService {
 
     @Transactional(readOnly = true)
     public Page<ReviewResponseDto> getReviewsByStory(Long storyDataId, Pageable pageable) {
+        validateStoryDataExists(storyDataId);
         return reviewRepository.findByStoryDataIdOrderByCreatedAtDesc(storyDataId, pageable)
                 .map(ReviewResponseDto::from);
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> getStoryRatingStats(Long storyDataId) {
+        validateStoryDataExists(storyDataId);
         Double averageRating = reviewRepository.getAverageRatingByStoryDataId(storyDataId);
         long totalReviews = reviewRepository.countByStoryDataId(storyDataId);
 
@@ -103,5 +109,10 @@ public class ReviewService {
         if (!review.getAuthor().getUsername().equals(username)) {
             throw new IllegalArgumentException("Not authorized to modify this review");
         }
+    }
+
+    private void validateStoryDataExists(Long storyDataId) {
+        storyDataRepository.findById(storyDataId)
+                .orElseThrow(() -> new ResourceNotFoundException("Story not found: " + storyDataId));
     }
 }

@@ -144,7 +144,7 @@ public class GameService {
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
         if (session.getUser() != null && !session.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized: You don't have permission to access this game session");
+            throw new com.story.game.common.exception.UnauthorizedException("You don't have permission to access this game session");
         }
 
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(session.getStoryDataId())
@@ -184,7 +184,7 @@ public class GameService {
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
         if (session.getUser() != null && !session.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized: You don't have permission to modify this game session");
+            throw new com.story.game.common.exception.UnauthorizedException("You don't have permission to modify this game session");
         }
 
         if (Boolean.TRUE.equals(session.getIsCompleted())) {
@@ -201,7 +201,7 @@ public class GameService {
         }
 
         if (choiceIndex < 0 || choiceIndex >= choices.size()) {
-            throw new RuntimeException("Invalid choice index: " + choiceIndex);
+            throw new com.story.game.common.exception.InvalidStateException("Invalid choice index: " + choiceIndex);
         }
 
         StoryChoice selectedChoice = choices.get(choiceIndex);
@@ -655,7 +655,7 @@ public class GameService {
             return storyDataRepository.save(storyData);
         } catch (Exception e) {
             log.error("Failed to parse or save story data", e);
-            throw new RuntimeException("Failed to save story data: " + e.getMessage(), e);
+            throw new com.story.game.common.exception.InvalidStateException("Failed to save story data: " + e.getMessage(), e);
         }
     }
 
@@ -682,11 +682,11 @@ public class GameService {
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
         if (session.getUser() != null && !session.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized: You don't have permission to access this game session");
+            throw new com.story.game.common.exception.UnauthorizedException("You don't have permission to access this game session");
         }
 
         if (!Boolean.TRUE.equals(session.getIsCompleted())) {
-            throw new RuntimeException("Game is not completed yet. sessionId: " + sessionId);
+            throw new com.story.game.common.exception.InvalidStateException("Game is not completed yet. sessionId: " + sessionId);
         }
 
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(session.getStoryDataId())
@@ -882,7 +882,7 @@ public class GameService {
 
         } catch (Exception e) {
             log.error("Failed to parse selected characters for StoryDataId: {}", storyDataId, e);
-            throw new RuntimeException("Failed to retrieve selected characters: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to retrieve selected characters: " + e.getMessage());
         }
     }
 }

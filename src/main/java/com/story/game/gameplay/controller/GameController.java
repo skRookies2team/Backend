@@ -51,7 +51,7 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        com.story.game.auth.entity.User user = convertToUser(userDetails);
         GameStateResponseDto response = gameService.startGame(request.getStoryDataId(), user);
 
         log.info("Game started. SessionId: {}", response.getSessionId());
@@ -82,7 +82,7 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        com.story.game.auth.entity.User user = convertToUser(userDetails);
         GameStateResponseDto response = gameService.getGameState(sessionId, user);
 
         return ResponseEntity.ok(response);
@@ -115,7 +115,7 @@ public class GameController {
 
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        com.story.game.auth.entity.User user = convertToUser(userDetails);
         GameStateResponseDto response = gameService.makeChoice(sessionId, request.getChoiceIndex(), user);
 
         return ResponseEntity.ok(response);
@@ -220,7 +220,7 @@ public class GameController {
         log.info("SessionId: {}", sessionId);
         log.info("User: {}", userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        com.story.game.auth.entity.User user = convertToUser(userDetails);
         com.story.game.gameplay.dto.FinalEndingResponseDto response = gameService.getFinalEnding(sessionId, user);
 
         log.info("Final ending retrieved: {}", response.getFinalEnding() != null ? response.getFinalEnding().getTitle() : "null");
@@ -251,6 +251,22 @@ public class GameController {
                 response.getSelectedCharacters() != null ? response.getSelectedCharacters().size() : 0);
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 안전한 User 형변환 Helper 메서드
+     * UserDetails를 User로 안전하게 형변환
+     */
+    private com.story.game.auth.entity.User convertToUser(UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new IllegalStateException("User authentication required");
+        }
+
+        if (!(userDetails instanceof com.story.game.auth.entity.User)) {
+            throw new ClassCastException("Invalid user type: " + userDetails.getClass().getName());
+        }
+
+        return (com.story.game.auth.entity.User) userDetails;
     }
 
 }
