@@ -54,7 +54,7 @@ public class ImageGenerationService {
      */
     @Transactional
     public void generateAndSaveNodeImage(
-        String storyCreationId,
+        String storyId,
         StoryNode node,
         String episodeTitle,
         Integer episodeOrder
@@ -69,13 +69,13 @@ public class ImageGenerationService {
 
         try {
             // Generate S3 presigned URL for image upload
-            String imageKey = "story-images/" + storyCreationId + "/" + node.getId() + ".png";
+            String imageKey = "story-images/" + storyId + "/" + node.getId() + ".png";
             String imageS3Url = s3Service.generatePresignedUploadUrl(imageKey).getUrl();
             log.debug("Generated presigned URL for image upload: {}", imageKey);
 
             // Build request
             ImageGenerationRequestDto request = ImageGenerationRequestDto.builder()
-                .storyId(storyCreationId)
+                .storyId(storyId)
                 .nodeId(node.getId().toString())
                 .nodeText(node.getText())
                 .situation(node.getSituation())
@@ -83,7 +83,7 @@ public class ImageGenerationService {
                 .episodeOrder(episodeOrder)
                 .nodeDepth(node.getDepth())
                 .novelS3Bucket(s3BucketName)
-                .novelS3Key("novels/original/" + storyCreationId + ".txt")
+                .novelS3Key("novels/original/" + storyId + ".txt")
                 .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
                 .build();
 
@@ -99,7 +99,7 @@ public class ImageGenerationService {
                     (e.getMessage().contains("스타일 정보") ||
                      e.getMessage().contains("style") ||
                      e.getMessage().contains("404"))) {
-                    log.warn("Novel style not found for story {}. Will attempt to learn style.", storyCreationId);
+                    log.warn("Novel style not found for story {}. Will attempt to learn style.", storyId);
                     retryWithStyleLearning = true;
                 } else {
                     throw e;
@@ -108,14 +108,14 @@ public class ImageGenerationService {
 
             // If style learning is needed, learn and retry
             if (retryWithStyleLearning) {
-                log.info("Attempting to learn novel style for story: {}", storyCreationId);
-                boolean styleLearnSuccess = ensureNovelStyleLearned(storyCreationId);
+                log.info("Attempting to learn novel style for story: {}", storyId);
+                boolean styleLearnSuccess = ensureNovelStyleLearned(storyId);
 
                 if (styleLearnSuccess) {
                     log.info("Novel style learned successfully. Retrying image generation...");
                     response = relayServerClient.generateImage(request);
                 } else {
-                    log.error("Failed to learn novel style for story: {}", storyCreationId);
+                    log.error("Failed to learn novel style for story: {}", storyId);
                     return;
                 }
             }
@@ -138,7 +138,7 @@ public class ImageGenerationService {
             log.info("Image downloaded successfully: {} bytes", imageBytes.length);
 
             // Upload to S3
-            String s3FileKey = "images/" + storyCreationId + "/" + node.getId() + ".png";
+            String s3FileKey = "images/" + storyId + "/" + node.getId() + ".png";
             String s3Url = s3Service.uploadBinaryFile(s3FileKey, imageBytes, "image/png");
 
             log.info("Image uploaded to S3: {}", s3FileKey);
@@ -162,19 +162,19 @@ public class ImageGenerationService {
      * Ensure novel style is learned for a story
      * Downloads novel from S3 and calls style learning API
      *
-     * @param storyCreationId Story ID
+     * @param storyId Story ID
      * @return true if style learning succeeded, false otherwise
      */
-    private boolean ensureNovelStyleLearned(String storyCreationId) {
+    private boolean ensureNovelStyleLearned(String storyId) {
         try {
-            log.info("Ensuring novel style is learned for story: {}", storyCreationId);
+            log.info("Ensuring novel style is learned for story: {}", storyId);
 
             // Get story creation to access title and novel
-            StoryCreation storyCreation = storyCreationRepository.findById(storyCreationId)
+            StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                 .orElse(null);
 
             if (storyCreation == null) {
-                log.error("Story creation not found: {}", storyCreationId);
+                log.error("Story creation not found: {}", storyId);
                 return false;
             }
 
@@ -183,7 +183,7 @@ public class ImageGenerationService {
 
             if (novelText == null || novelText.isEmpty()) {
                 // Try to download from S3
-                String novelFileKey = "novels/original/" + storyCreationId + ".txt";
+                String novelFileKey = "novels/original/" + storyId + ".txt";
                 try {
                     novelText = s3Service.downloadFileContent(novelFileKey);
                     log.info("Downloaded novel from S3: {} ({} characters)",
@@ -195,13 +195,13 @@ public class ImageGenerationService {
             }
 
             if (novelText == null || novelText.isEmpty()) {
-                log.error("No novel text available for story: {}", storyCreationId);
+                log.error("No novel text available for story: {}", storyId);
                 return false;
             }
 
             // Build style learning request
             NovelStyleLearnRequestDto styleRequest = NovelStyleLearnRequestDto.builder()
-                .story_id(storyCreationId)
+                .story_id(storyId)
                 .novel_text(novelText)
                 .title(storyCreation.getTitle())
                 .build();
@@ -210,16 +210,16 @@ public class ImageGenerationService {
             Boolean result = relayServerClient.learnNovelStyle(styleRequest);
 
             if (result != null && result) {
-                log.info("✅ Novel style learned successfully for story: {}", storyCreationId);
+                log.info("✅ Novel style learned successfully for story: {}", storyId);
                 return true;
             } else {
-                log.warn("Novel style learning returned false for story: {}", storyCreationId);
+                log.warn("Novel style learning returned false for story: {}", storyId);
                 return false;
             }
 
         } catch (Exception e) {
             log.error("Failed to ensure novel style learned for story {}: {}",
-                storyCreationId, e.getMessage(), e);
+                storyId, e.getMessage(), e);
             return false;
         }
     }

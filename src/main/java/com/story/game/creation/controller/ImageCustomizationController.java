@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/stories/{storyCreationId}/images")
+@RequestMapping("/api/stories/{storyId}/images")
 @RequiredArgsConstructor
 @Slf4j
 public class ImageCustomizationController {
@@ -22,41 +22,41 @@ public class ImageCustomizationController {
 
     @PostMapping("/nodes/{nodeId}/regenerate")
     public ResponseEntity<ImageGenerationResponseDto> regenerateNodeImage(
-        @PathVariable String storyCreationId,
+        @PathVariable String storyId,
         @PathVariable String nodeId,
         @RequestBody @Valid RegenerateImageRequestDto request
     ) {
-        log.info("Regenerating image for node {} in story {}", nodeId, storyCreationId);
+        log.info("Regenerating image for node {} in story {}", nodeId, storyId);
 
         ImageGenerationResponseDto response = imageCustomizationService
-            .regenerateImage(storyCreationId, nodeId, request);
+            .regenerateImage(storyId, nodeId, request);
 
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/nodes/{nodeId}/upload")
     public ResponseEntity<UploadImageResponseDto> uploadCustomImage(
-        @PathVariable String storyCreationId,
+        @PathVariable String storyId,
         @PathVariable String nodeId,
         @RequestBody @Valid UploadImageRequestDto request
     ) {
-        log.info("Uploading custom image for node {} in story {}", nodeId, storyCreationId);
+        log.info("Uploading custom image for node {} in story {}", nodeId, storyId);
 
         UploadImageResponseDto response = imageCustomizationService
-            .uploadCustomImage(storyCreationId, nodeId, request);
+            .uploadCustomImage(storyId, nodeId, request);
 
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/nodes/{nodeId}")
     public ResponseEntity<NodeImageResponseDto> getNodeImage(
-        @PathVariable String storyCreationId,
+        @PathVariable String storyId,
         @PathVariable String nodeId
     ) {
-        log.info("Getting image for node {} in story {}", nodeId, storyCreationId);
+        log.info("Getting image for node {} in story {}", nodeId, storyId);
 
         NodeImageResponseDto response = imageCustomizationService
-            .getNodeImage(storyCreationId, nodeId);
+            .getNodeImage(storyId, nodeId);
 
         return ResponseEntity.ok(response);
     }

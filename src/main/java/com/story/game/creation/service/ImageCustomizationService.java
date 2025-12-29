@@ -40,24 +40,24 @@ public class ImageCustomizationService {
      */
     @Transactional
     public ImageGenerationResponseDto regenerateImage(
-        String storyCreationId,
+        String storyId,
         String nodeId,
         RegenerateImageRequestDto request
     ) {
         // Validate node exists
-        StoryNode node = validateNode(storyCreationId, nodeId);
+        StoryNode node = validateNode(storyId, nodeId);
         Episode episode = node.getEpisode();
 
         // Build request with custom prompt
         ImageGenerationRequestDto imageRequest = ImageGenerationRequestDto.builder()
-            .storyId(storyCreationId)
+            .storyId(storyId)
             .nodeId(nodeId)
             .nodeText(request.getCustomPrompt())  // Use custom prompt
             .episodeTitle(episode.getTitle())
             .episodeOrder(episode.getOrder())
             .nodeDepth(node.getDepth())
             .novelS3Bucket(s3BucketName)
-            .novelS3Key("novels/original/" + storyCreationId + ".txt")
+            .novelS3Key("novels/original/" + storyId + ".txt")
             .build();
 
         // Generate via relay server
@@ -76,15 +76,15 @@ public class ImageCustomizationService {
      */
     @Transactional
     public UploadImageResponseDto uploadCustomImage(
-        String storyCreationId,
+        String storyId,
         String nodeId,
         UploadImageRequestDto request
     ) {
         // Validate node exists
-        StoryNode node = validateNode(storyCreationId, nodeId);
+        StoryNode node = validateNode(storyId, nodeId);
 
         // Generate presigned upload URL
-        String fileKey = "images/custom/" + storyCreationId + "/nodes/" + nodeId + ".jpg";
+        String fileKey = "images/custom/" + storyId + "/nodes/" + nodeId + ".jpg";
         S3Service.PresignedUrlInfo presignedUrlInfo =
             s3Service.generatePresignedUploadUrl(fileKey);
 
@@ -105,7 +105,7 @@ public class ImageCustomizationService {
     /**
      * Get current image for a node
      */
-    public NodeImageResponseDto getNodeImage(String storyCreationId, String nodeId) {
+    public NodeImageResponseDto getNodeImage(String storyId, String nodeId) {
         StoryNode node = storyNodeRepository.findById(UUID.fromString(nodeId))
             .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
 
@@ -125,7 +125,7 @@ public class ImageCustomizationService {
      * Validate that the node exists
      * Returns the node if valid, throws exception otherwise
      */
-    private StoryNode validateNode(String storyCreationId, String nodeId) {
+    private StoryNode validateNode(String storyId, String nodeId) {
         StoryNode node = storyNodeRepository.findById(UUID.fromString(nodeId))
             .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
 

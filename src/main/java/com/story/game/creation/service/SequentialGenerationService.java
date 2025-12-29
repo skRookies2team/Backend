@@ -380,7 +380,7 @@ public class SequentialGenerationService {
      * Generate images for root and ending nodes in an episode
      */
     private void generateImagesForEpisode(
-        String storyCreationId,
+        String storyId,
         Episode episode,
         EpisodeDto episodeDto
     ) {
@@ -398,7 +398,7 @@ public class SequentialGenerationService {
 
         // Recursively process all nodes in the episode
         processNodeTreeForImages(
-            storyCreationId,
+            storyId,
             rootNode,
             episode.getTitle(),
             episode.getOrder()
@@ -409,7 +409,7 @@ public class SequentialGenerationService {
      * Recursively process node tree to generate images for root and ending nodes
      */
     private void processNodeTreeForImages(
-        String storyCreationId,
+        String storyId,
         com.story.game.story.entity.StoryNode node,
         String episodeTitle,
         Integer episodeOrder
@@ -420,7 +420,7 @@ public class SequentialGenerationService {
 
         // Generate image for this node if needed (root or ending)
         imageGenerationService.generateAndSaveNodeImage(
-            storyCreationId, node, episodeTitle, episodeOrder
+            storyId, node, episodeTitle, episodeOrder
         );
 
         // Recursively process child nodes
@@ -428,7 +428,7 @@ public class SequentialGenerationService {
             for (com.story.game.story.entity.StoryChoice choice : node.getOutgoingChoices()) {
                 if (choice.getDestinationNode() != null) {
                     processNodeTreeForImages(
-                        storyCreationId,
+                        storyId,
                         choice.getDestinationNode(),
                         episodeTitle,
                         episodeOrder
