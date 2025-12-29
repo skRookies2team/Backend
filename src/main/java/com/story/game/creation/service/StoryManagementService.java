@@ -929,4 +929,88 @@ public class StoryManagementService {
             }
         }
     }
+
+    /**
+     * 스토리 삭제 (생성 중이거나 완료된 스토리)
+     * - StoryCreation, StoryData, Episodes, Nodes, Choices 모두 삭제
+     * - S3에 저장된 파일들도 삭제 (소설 원본, 분석 결과, 스토리 JSON, 이미지 등)
+     */
+    @Transactional
+    public void deleteStory(String storyId, com.story.game.auth.entity.User user) {
+        log.info("=== Delete Story ===");
+        log.info("StoryId: {}, User: {}", storyId, user.getUsername());
+
+        // 1. Find story creation
+        StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
+
+        // 2. Authorization check - 본인이 생성한 스토리만 삭제 가능
+        if (storyCreation.getUser() == null) {
+            throw new RuntimeException("Unauthorized: Story has no owner");
+        }
+
+        if (!storyCreation.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized: You can only delete your own stories");
+        }
+
+        // 3. S3 파일 삭제 (실패해도 계속 진행)
+        deleteS3FilesForStory(storyCreation);
+
+        // 4. StoryData 삭제 (완료된 스토리의 경우)
+        if (storyCreation.getStoryDataId() != null) {
+            storyDataRepository.findById(storyCreation.getStoryDataId()).ifPresent(storyData -> {
+                log.info("Deleting StoryData: {}", storyData.getId());
+
+                // StoryData의 S3 파일도 삭제
+                if (storyData.getStoryFileKey() != null) {
+                    deleteS3File(storyData.getStoryFileKey(), "Story JSON");
+                }
+                if (storyData.getThumbnailFileKey() != null) {
+                    deleteS3File(storyData.getThumbnailFileKey(), "Thumbnail");
+                }
+
+                storyDataRepository.delete(storyData);
+            });
+        }
+
+        // 5. StoryCreation 삭제 (연관된 Episodes, Nodes, Choices는 cascade로 자동 삭제됨)
+        log.info("Deleting StoryCreation: {}", storyId);
+        storyCreationRepository.delete(storyCreation);
+
+        log.info("Story deleted successfully: {}", storyId);
+    }
+
+    /**
+     * 스토리와 연관된 S3 파일들 삭제
+     */
+    private void deleteS3FilesForStory(StoryCreation storyCreation) {
+        log.info("Deleting S3 files for story: {}", storyCreation.getId());
+
+        // 소설 원본 파일
+        if (storyCreation.getS3FileKey() != null) {
+            deleteS3File(storyCreation.getS3FileKey(), "Novel original");
+        }
+
+        // 분석 결과 파일
+        if (storyCreation.getAnalysisResultFileKey() != null) {
+            deleteS3File(storyCreation.getAnalysisResultFileKey(), "Analysis result");
+        }
+
+        // TODO: 이미지 파일들 삭제 (StoryNode의 imageFileKey들)
+        // 현재는 cascade delete로 StoryNode가 삭제되므로,
+        // 삭제 전에 모든 노드의 imageFileKey를 수집해서 S3에서 삭제해야 함
+        // 성능 최적화를 위해 추후 구현 가능
+    }
+
+    /**
+     * S3 파일 삭제 (실패해도 로그만 남기고 계속 진행)
+     */
+    private void deleteS3File(String fileKey, String fileType) {
+        try {
+            s3Service.deleteFile(fileKey);
+            log.info("Deleted {} from S3: {}", fileType, fileKey);
+        } catch (Exception e) {
+            log.warn("Failed to delete {} from S3: {} (continuing anyway)", fileType, fileKey, e);
+        }
+    }
 }

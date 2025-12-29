@@ -38,6 +38,13 @@ public class StoryData {
     @Column(name = "total_nodes")
     private Integer totalNodes;
 
+    // Story thumbnail/cover image
+    @Column(name = "thumbnail_url", length = 500)
+    private String thumbnailUrl;
+
+    @Column(name = "thumbnail_file_key", length = 500)
+    private String thumbnailFileKey;
+
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

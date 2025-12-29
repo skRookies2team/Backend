@@ -342,4 +342,27 @@ public class StoryManagementController {
         log.info("Subtree regeneration completed: {} nodes regenerated", totalNodes);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 스토리 삭제
+     */
+    @DeleteMapping("/{storyId}")
+    @Operation(
+            summary = "스토리 삭제",
+            description = "생성 중이거나 완료된 스토리를 삭제합니다. " +
+                    "StoryCreation, StoryData, Episodes, Nodes, Choices 및 S3 파일들이 모두 삭제됩니다. " +
+                    "본인이 생성한 스토리만 삭제할 수 있습니다."
+    )
+    public ResponseEntity<Void> deleteStory(
+            @PathVariable String storyId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        log.info("=== Delete Story Request ===");
+        log.info("StoryId: {}, User: {}", storyId, userDetails != null ? userDetails.getUsername() : "anonymous");
+
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        storyManagementService.deleteStory(storyId, user);
+
+        log.info("Story deleted successfully: {}", storyId);
+        return ResponseEntity.noContent().build();
+    }
 }

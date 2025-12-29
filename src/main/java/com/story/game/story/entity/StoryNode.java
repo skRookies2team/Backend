@@ -64,4 +64,7 @@ public class StoryNode {
 
     @Column(name = "image_file_key", length = 500)
     private String imageFileKey;
+
+    @Column(name = "image_type", length = 50)
+    private String imageType;  // SCENE, EPISODE_START, EPISODE_ENDING 등 (ImageType enum의 name())
 }

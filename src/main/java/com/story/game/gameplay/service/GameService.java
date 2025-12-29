@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.story.game.common.dto.FinalEndingDto;
 import com.story.game.common.dto.FullStoryDto;
 import com.story.game.common.dto.GaugeDto;
+import com.story.game.common.dto.ImageType;
+import com.story.game.common.dto.NodeImageInfo;
 import com.story.game.common.dto.StoryChoiceDto;
 import com.story.game.common.dto.EpisodeDto;
 import com.story.game.common.dto.StoryNodeDto;
@@ -126,14 +128,14 @@ public class GameService {
         session = gameSessionRepository.save(session);
         log.info("Game session created for user: {} with sessionId: {}", user.getUsername(), session.getId());
 
-        String imageUrl = generateNodeImage(
+        NodeImageInfo nodeImage = generateNodeImage(
                 session.getStoryCreationId(),
                 rootNode.getId().toString(),
                 storyMapper.toStoryNodeDto(rootNode),
                 storyMapper.toEpisodeDto(firstEpisode)
         );
 
-        return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, imageUrl);
+        return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, nodeImage);
     }
 
     @Transactional(readOnly = true)
@@ -166,14 +168,14 @@ public class GameService {
 
         boolean isFirstNodeOfEpisode = currentNode.getDepth() == 0;
 
-        String imageUrl = generateNodeImage(
+        NodeImageInfo nodeImage = generateNodeImage(
                 session.getStoryCreationId(),
                 session.getCurrentNodeId(),
                 storyMapper.toStoryNodeDto(currentNode),
                 storyMapper.toEpisodeDto(currentEpisode)
         );
 
-        return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, imageUrl);
+        return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, nodeImage);
     }
 
     @Transactional
@@ -276,14 +278,14 @@ public class GameService {
                 return handleEpisodeEnd(session);
             }
 
-            String imageUrl = generateNodeImage(
+            NodeImageInfo nodeImage = generateNodeImage(
                     session.getStoryCreationId(),
                     nextNode.getId().toString(),
                     storyMapper.toStoryNodeDto(nextNode),
                     storyMapper.toEpisodeDto(currentNode.getEpisode())
             );
 
-            return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, imageUrl);
+            return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, nodeImage);
         } else {
             return handleEpisodeEnd(session);
         }
@@ -326,13 +328,13 @@ public class GameService {
             session.setAccumulatedTags(new HashMap<>());
             gameSessionRepository.save(session);
 
-            String imageUrl = generateNodeImage(
+            NodeImageInfo nodeImage = generateNodeImage(
                     session.getStoryCreationId(),
                     rootNode.getId().toString(),
                     storyMapper.toStoryNodeDto(rootNode),
                     storyMapper.toEpisodeDto(nextEpisode)
             );
-            GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, imageUrl);
+            GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, nodeImage);
             response.setIsEpisodeEnd(true);
             response.setEpisodeEnding(storyMapper.toEpisodeEndingDto(matchedEnding));
             return response;
@@ -460,7 +462,7 @@ public class GameService {
     }
 
     private GameStateResponseDto buildGameStateResponse(GameSession session, StoryCreation storyCreation,
-                                                        Episode episode, StoryNode node, boolean showIntro, String imageUrl) {
+                                                        Episode episode, StoryNode node, boolean showIntro, NodeImageInfo nodeImage) {
         List<StoryChoice> choices = storyChoiceRepository.findBySourceNodeOrderByChoiceOrderAsc(node);
         List<StoryChoiceDto> choiceDtos = choices.stream()
                 .map(storyMapper::toStoryChoiceDto)
@@ -483,6 +485,7 @@ public class GameService {
         log.info("Intro Text: {}", introText != null ? introText.substring(0, Math.min(50, introText.length())) + "..." : "null");
         log.info("Node Text: {}", nodeText != null ? nodeText.substring(0, Math.min(50, nodeText.length())) + "..." : "null");
         log.info("Choices Count: {}", choiceDtos.size());
+        log.info("Node Image: type={}, url={}", nodeImage != null ? nodeImage.getType() : "null", nodeImage != null ? nodeImage.getImageUrl() : "null");
         log.info("====================================");
 
         return GameStateResponseDto.builder()
@@ -497,7 +500,7 @@ public class GameService {
                 .nodeText(nodeText)
                 .nodeDetails(nodeDetails)
                 .choices(choiceDtos)
-                .imageUrl(imageUrl)
+                .nodeImage(nodeImage)
                 .gaugeDefinitions(gaugeDefinitions)
                 .isEpisodeEnd(false)
                 .isGameEnd(false)
@@ -532,7 +535,10 @@ public class GameService {
         }
     }
 
-    private String generateNodeImage(String storyId, String nodeId, StoryNodeDto node, EpisodeDto episode) {
+    private NodeImageInfo generateNodeImage(String storyId, String nodeId, StoryNodeDto node, EpisodeDto episode) {
+        // Determine image type based on node properties
+        ImageType imageType = determineImageType(node);
+
         // Check if image already exists in database
         Optional<StoryNode> nodeOpt = storyNodeRepository.findById(UUID.fromString(nodeId));
         if (nodeOpt.isPresent() && nodeOpt.get().getImageFileKey() != null) {
@@ -541,7 +547,13 @@ public class GameService {
                 nodeOpt.get().getImageFileKey()
             );
             log.info("Using existing image for node {}: {}", nodeId, presignedUrl);
-            return presignedUrl;
+
+            return NodeImageInfo.builder()
+                    .imageUrl(presignedUrl)
+                    .type(imageType)
+                    .fileKey(nodeOpt.get().getImageFileKey())
+                    .altText(generateAltText(node, imageType))
+                    .build();
         }
 
         // Image doesn't exist, generate new one
@@ -568,14 +580,59 @@ public class GameService {
                 StoryNode nodeEntity = nodeOpt.get();
                 nodeEntity.setImageUrl(response.getImageUrl());
                 nodeEntity.setImageFileKey(response.getFileKey());
+                nodeEntity.setImageType(imageType.name());
                 storyNodeRepository.save(nodeEntity);
             }
 
-            return response.getImageUrl();
+            return NodeImageInfo.builder()
+                    .imageUrl(response.getImageUrl())
+                    .type(imageType)
+                    .fileKey(response.getFileKey())
+                    .altText(generateAltText(node, imageType))
+                    .build();
         } catch (Exception e) {
             log.warn("Failed to generate image: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Determine image type based on node properties
+     */
+    private ImageType determineImageType(StoryNodeDto node) {
+        if (node.getDepth() != null && node.getDepth() == 0) {
+            return ImageType.EPISODE_START;
+        }
+        // For other nodes, it's a regular scene image
+        // Ending images are handled separately in ending DTOs
+        return ImageType.SCENE;
+    }
+
+    /**
+     * Generate alt text for accessibility
+     */
+    private String generateAltText(StoryNodeDto node, ImageType imageType) {
+        StringBuilder altText = new StringBuilder();
+
+        switch (imageType) {
+            case EPISODE_START:
+                altText.append("Episode start: ");
+                break;
+            case SCENE:
+                altText.append("Scene: ");
+                break;
+            default:
+                altText.append("Image: ");
+        }
+
+        String nodeText = node.getText();
+        if (nodeText != null && nodeText.length() > 100) {
+            altText.append(nodeText, 0, 100).append("...");
+        } else {
+            altText.append(nodeText);
+        }
+
+        return altText.toString();
     }
 
     @Transactional

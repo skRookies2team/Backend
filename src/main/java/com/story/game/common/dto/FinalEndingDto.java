@@ -12,4 +12,8 @@ public class FinalEndingDto {
     private String title;
     private String condition;
     private String summary;
+
+    // Final ending image (최종 엔딩 이미지)
+    private String imageUrl;
+    private String imageFileKey;
 }

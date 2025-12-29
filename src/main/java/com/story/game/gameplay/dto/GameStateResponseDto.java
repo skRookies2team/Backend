@@ -1,5 +1,6 @@
 package com.story.game.gameplay.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.story.game.common.dto.*;
 import lombok.*;
 import java.util.List;
@@ -24,8 +25,24 @@ public class GameStateResponseDto {
     private StoryNodeDto.StoryNodeDetailDto nodeDetails;
     private List<StoryChoiceDto> choices;
 
-    // Image URL for the current node
-    private String imageUrl;
+    // Image information for the current node (with type)
+    private NodeImageInfo nodeImage;
+
+    // Deprecated: 하위 호환성을 위해 유지, nodeImage.imageUrl 값 반환
+    @Deprecated
+    @JsonIgnore
+    public String getImageUrl() {
+        return nodeImage != null ? nodeImage.getImageUrl() : null;
+    }
+
+    // Deprecated: 하위 호환성을 위한 setter
+    @Deprecated
+    @JsonIgnore
+    public void setImageUrl(String imageUrl) {
+        if (imageUrl != null) {
+            this.nodeImage = NodeImageInfo.of(imageUrl, ImageType.SCENE);
+        }
+    }
 
     // Gauge info for display
     private List<GaugeDto> gaugeDefinitions;

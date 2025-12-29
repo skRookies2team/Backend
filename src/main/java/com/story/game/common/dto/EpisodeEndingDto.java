@@ -16,4 +16,8 @@ public class EpisodeEndingDto {
 
     @JsonProperty("gauge_changes")
     private Map<String, Integer> gaugeChanges;
+
+    // Episode ending image (엔딩 이미지)
+    private String imageUrl;
+    private String imageFileKey;
 }
