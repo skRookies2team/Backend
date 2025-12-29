@@ -40,19 +40,21 @@ public class StoryManagementService {
     private final RelayServerClient relayServerClient;
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
+    private final com.story.game.story.repository.EpisodeRepository episodeRepository;
 
     @org.springframework.beans.factory.annotation.Value("${aws.s3.bucket}")
     private String bucketName;
 
     @Transactional
-    public StoryUploadResponseDto uploadNovel(StoryUploadRequestDto request) {
+    public StoryUploadResponseDto uploadNovel(StoryUploadRequestDto request, com.story.game.auth.entity.User user) {
         log.info("=== Upload Novel ===");
-        log.info("Title: {}", request.getTitle());
+        log.info("Title: {}, User: {}", request.getTitle(), user != null ? user.getUsername() : "null");
 
         String storyId = "story_" + UUID.randomUUID().toString().substring(0, 8);
 
         StoryCreation storyCreation = StoryCreation.builder()
                 .id(storyId)
+                .user(user)
                 .title(request.getTitle())
                 .genre(request.getGenre())
                 .novelText(request.getNovelText())
@@ -130,7 +132,7 @@ public class StoryManagementService {
                     .block();
 
             if (response == null) {
-                throw new RuntimeException("No response from AI server");
+                throw new com.story.game.common.exception.ExternalServiceException("No response from AI server");
             }
 
             StoryCreation storyCreation = storyCreationRepository.findById(storyId)
@@ -306,7 +308,7 @@ public class StoryManagementService {
             }
 
             if (allGauges == null) {
-                throw new RuntimeException("No gauges found");
+                throw new com.story.game.common.exception.InvalidStateException("No gauges found");
             }
 
             List<GaugeDto> selectedGauges = allGauges.stream()
@@ -353,7 +355,7 @@ public class StoryManagementService {
 
         } catch (Exception e) {
             log.error("Failed to select gauges", e);
-            throw new RuntimeException("Failed to select gauges: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to select gauges: " + e.getMessage());
         }
     }
 
@@ -379,7 +381,7 @@ public class StoryManagementService {
 
         // Validate story state
         if (storyCreation.getCharactersJson() == null || storyCreation.getCharactersJson().isBlank()) {
-            throw new RuntimeException("No characters available for this story");
+            throw new com.story.game.common.exception.InvalidStateException("No characters available for this story");
         }
 
         // Log if characters were already selected (overwriting)
@@ -419,7 +421,7 @@ public class StoryManagementService {
 
         } catch (Exception e) {
             log.error("Failed to select and index characters", e);
-            throw new RuntimeException("Failed to select characters: " + e.getMessage());
+            throw new com.story.game.common.exception.ExternalServiceException("Failed to select characters: " + e.getMessage());
         }
     }
 
@@ -629,7 +631,7 @@ public class StoryManagementService {
 
         } catch (Exception e) {
             log.error("Failed to parse selected characters", e);
-            throw new RuntimeException("Failed to retrieve selected characters: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to retrieve selected characters: " + e.getMessage());
         }
     }
 
@@ -673,7 +675,7 @@ public class StoryManagementService {
 
         } catch (Exception e) {
             log.error("Failed to configure story", e);
-            throw new RuntimeException("Failed to configure story: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to configure story: " + e.getMessage());
         }
     }
 
@@ -739,7 +741,7 @@ public class StoryManagementService {
 
         } catch (Exception e) {
             log.error("Failed to parse story result", e);
-            throw new RuntimeException("Failed to parse story result: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to parse story result: " + e.getMessage());
         }
     }
 
@@ -776,19 +778,20 @@ public class StoryManagementService {
             return objectMapper.readValue(storyJson, FullStoryDto.class);
         } catch (Exception e) {
             log.error("Failed to parse story JSON", e);
-            throw new RuntimeException("Failed to parse story data: " + e.getMessage());
+            throw new com.story.game.common.exception.InvalidStateException("Failed to parse story data: " + e.getMessage());
         }
     }
 
     @Transactional
-    public StoryUploadResponseDto uploadNovelFromS3(S3UploadRequestDto request) {
+    public StoryUploadResponseDto uploadNovelFromS3(S3UploadRequestDto request, com.story.game.auth.entity.User user) {
         log.info("=== Upload Novel From S3 ===");
-        log.info("Title: {}, FileKey: {}", request.getTitle(), request.getFileKey());
+        log.info("Title: {}, FileKey: {}, User: {}", request.getTitle(), request.getFileKey(), user != null ? user.getUsername() : "null");
 
         String storyId = "story_" + UUID.randomUUID().toString().substring(0, 8);
 
         StoryCreation storyCreation = StoryCreation.builder()
                 .id(storyId)
+                .user(user)
                 .title(request.getTitle())
                 .genre(request.getGenre())
                 .novelText("")
@@ -855,7 +858,7 @@ public class StoryManagementService {
                     .block();
 
             if (response == null) {
-                throw new RuntimeException("No response from AI server");
+                throw new com.story.game.common.exception.ExternalServiceException("No response from AI server");
             }
 
             StoryCreation storyCreation = storyCreationRepository.findById(storyId)
@@ -879,7 +882,7 @@ public class StoryManagementService {
                     log.info("Synced analysis data from S3 to DB for story: {}", storyId);
                 } catch (Exception e) {
                     log.error("Failed to sync analysis data from S3 to DB", e);
-                    throw new RuntimeException("Failed to sync analysis data: " + e.getMessage());
+                    throw new com.story.game.common.exception.InvalidStateException("Failed to sync analysis data: " + e.getMessage());
                 }
             }
             else {
@@ -942,19 +945,35 @@ public class StoryManagementService {
 
         // 1. Find story creation
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
-                .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
+                .orElseThrow(() -> new com.story.game.common.exception.ResourceNotFoundException("Story not found: " + storyId));
 
         // 2. Authorization check - 본인이 생성한 스토리만 삭제 가능
         if (storyCreation.getUser() == null) {
-            throw new RuntimeException("Unauthorized: Story has no owner");
+            throw new com.story.game.common.exception.UnauthorizedException("Unauthorized: Story has no owner");
         }
 
         if (!storyCreation.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized: You can only delete your own stories");
+            throw new com.story.game.common.exception.UnauthorizedException("Unauthorized: You can only delete your own stories");
         }
 
         // 3. S3 파일 삭제 (실패해도 계속 진행)
         deleteS3FilesForStory(storyCreation);
+
+        // 3-1. RAG 서버 데이터 삭제 (실패해도 계속 진행)
+        try {
+            ragService.deleteStoryFromRag(storyId);
+            log.info("RAG data deletion requested for story: {}", storyId);
+        } catch (Exception e) {
+            log.warn("Failed to delete RAG data (non-critical), continuing with deletion: {}", storyId, e);
+        }
+
+        // 3-2. Chat Conversations 삭제 (DB에 저장된 대화 내역)
+        try {
+            ragService.deleteConversationsByStoryId(user.getUsername(), storyId);
+            log.info("Chat conversations deleted for story: {}", storyId);
+        } catch (Exception e) {
+            log.warn("Failed to delete chat conversations (non-critical): {}", storyId, e);
+        }
 
         // 4. StoryData 삭제 (완료된 스토리의 경우)
         if (storyCreation.getStoryDataId() != null) {
@@ -996,10 +1015,24 @@ public class StoryManagementService {
             deleteS3File(storyCreation.getAnalysisResultFileKey(), "Analysis result");
         }
 
-        // TODO: 이미지 파일들 삭제 (StoryNode의 imageFileKey들)
-        // 현재는 cascade delete로 StoryNode가 삭제되므로,
-        // 삭제 전에 모든 노드의 imageFileKey를 수집해서 S3에서 삭제해야 함
-        // 성능 최적화를 위해 추후 구현 가능
+        // 노드 이미지 파일들 삭제
+        try {
+            List<com.story.game.story.entity.Episode> episodes = episodeRepository.findAllByStory(storyCreation);
+            int imageCount = 0;
+
+            for (com.story.game.story.entity.Episode episode : episodes) {
+                for (com.story.game.story.entity.StoryNode node : episode.getNodes()) {
+                    if (node.getImageFileKey() != null && !node.getImageFileKey().isBlank()) {
+                        deleteS3File(node.getImageFileKey(), "Node image");
+                        imageCount++;
+                    }
+                }
+            }
+
+            log.info("Deleted {} node images for story: {}", imageCount, storyCreation.getId());
+        } catch (Exception e) {
+            log.warn("Failed to delete some node images (non-critical): {}", storyCreation.getId(), e);
+        }
     }
 
     /**

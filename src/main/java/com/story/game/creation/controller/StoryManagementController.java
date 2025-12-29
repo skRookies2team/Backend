@@ -39,11 +39,13 @@ public class StoryManagementController {
                     "백그라운드에서 요약, 캐릭터, 게이지 추출이 진행됩니다."
     )
     public ResponseEntity<StoryUploadResponseDto> uploadNovel(
-            @Valid @RequestBody StoryUploadRequestDto request) {
+            @Valid @RequestBody StoryUploadRequestDto request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
         log.info("=== Upload Novel Request ===");
-        log.info("Title: {}", request.getTitle());
+        log.info("Title: {}, User: {}", request.getTitle(), userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        StoryUploadResponseDto response = storyManagementService.uploadNovel(request);
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        StoryUploadResponseDto response = storyManagementService.uploadNovel(request, user);
 
         log.info("Novel uploaded. StoryId: {}", response.getStoryId());
         return ResponseEntity.ok(response);
@@ -298,11 +300,13 @@ public class StoryManagementController {
                     "이 엔드포인트로 fileKey를 전달하여 분석을 시작합니다."
     )
     public ResponseEntity<StoryUploadResponseDto> uploadNovelFromS3(
-            @Valid @RequestBody S3UploadRequestDto request) {
+            @Valid @RequestBody S3UploadRequestDto request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
         log.info("=== Upload Novel From S3 Request ===");
-        log.info("Title: {}, FileKey: {}", request.getTitle(), request.getFileKey());
+        log.info("Title: {}, FileKey: {}, User: {}", request.getTitle(), request.getFileKey(), userDetails != null ? userDetails.getUsername() : "anonymous");
 
-        StoryUploadResponseDto response = storyManagementService.uploadNovelFromS3(request);
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        StoryUploadResponseDto response = storyManagementService.uploadNovelFromS3(request, user);
 
         log.info("Novel uploaded from S3. StoryId: {}", response.getStoryId());
         return ResponseEntity.ok(response);

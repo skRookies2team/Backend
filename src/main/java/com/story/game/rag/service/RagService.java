@@ -338,6 +338,41 @@ public class RagService {
     }
 
     /**
+     * RAG 서버에서 스토리 관련 인덱싱 데이터 삭제
+     * 소설 원본 및 캐릭터 인덱스를 모두 삭제
+     * 실패해도 계속 진행 (non-critical)
+     */
+    public Boolean deleteStoryFromRag(String storyId) {
+        log.info("=== Delete Story from RAG ===");
+        log.info("StoryId: {}", storyId);
+
+        try {
+            Boolean result = relayServerWebClient.delete()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/ai/chat/story/{storyId}")
+                            .build(storyId))
+                    .retrieve()
+                    .bodyToMono(Boolean.class)
+                    .block();
+
+            log.info("RAG deletion result for story {}: {}", storyId, result);
+            return result != null && result;
+
+        } catch (WebClientResponseException e) {
+            log.warn("RAG server returned error while deleting story (non-critical): {} - Status: {}, Body: {}",
+                    storyId, e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
+        } catch (WebClientRequestException e) {
+            log.warn("Failed to connect to RAG server while deleting story (non-critical): {} - {}",
+                    storyId, e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.warn("Unexpected error while deleting story from RAG (non-critical): {}", storyId, e);
+            return false;
+        }
+    }
+
+    /**
      * 게임 진행 상황을 NPC AI에 업데이트
      */
     public Boolean updateGameProgress(GameProgressUpdateRequestDto request) {

@@ -104,7 +104,7 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
-    @ExceptionHandler({EntityNotFoundException.class, NoSuchElementException.class})
+    @ExceptionHandler({EntityNotFoundException.class, NoSuchElementException.class, ResourceNotFoundException.class})
     public ResponseEntity<ErrorResponse> handleNotFoundException(
             Exception ex, WebRequest request) {
         log.error("=== Not Found Exception (404) ===");
@@ -119,6 +119,57 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now()
         );
         return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorizedException(
+            UnauthorizedException ex, WebRequest request) {
+        log.error("=== Unauthorized Exception (403) ===");
+        log.error("Message: {}", ex.getMessage());
+        log.error("Request: {}", request.getDescription(false));
+        log.error("====================================");
+
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                ex.getMessage(),
+                request.getDescription(false),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(InvalidStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidStateException(
+            InvalidStateException ex, WebRequest request) {
+        log.error("=== Invalid State Exception (400) ===");
+        log.error("Message: {}", ex.getMessage());
+        log.error("Request: {}", request.getDescription(false));
+        log.error("=====================================");
+
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                ex.getMessage(),
+                request.getDescription(false),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ExternalServiceException.class)
+    public ResponseEntity<ErrorResponse> handleExternalServiceException(
+            ExternalServiceException ex, WebRequest request) {
+        log.error("=== External Service Exception (502) ===");
+        log.error("Message: {}", ex.getMessage());
+        log.error("Request: {}", request.getDescription(false));
+        log.error("========================================", ex);
+
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_GATEWAY.value(),
+                "External service error: " + ex.getMessage(),
+                request.getDescription(false),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_GATEWAY);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
