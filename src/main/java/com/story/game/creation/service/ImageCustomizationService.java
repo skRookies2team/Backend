@@ -48,6 +48,11 @@ public class ImageCustomizationService {
         StoryNode node = validateNode(storyId, nodeId);
         Episode episode = node.getEpisode();
 
+        // Generate S3 presigned URL for image upload
+        String imageKey = "images/custom/" + storyId + "/nodes/" + nodeId + ".png";
+        String imageS3Url = s3Service.generatePresignedUploadUrl(imageKey).getUrl();
+        log.debug("Generated presigned URL for custom image upload: {}", imageKey);
+
         // Build request with custom prompt
         ImageGenerationRequestDto imageRequest = ImageGenerationRequestDto.builder()
             .storyId(storyId)
@@ -56,8 +61,11 @@ public class ImageCustomizationService {
             .episodeTitle(episode.getTitle())
             .episodeOrder(episode.getOrder())
             .nodeDepth(node.getDepth())
+            .imageType("SCENE")  // 커스텀 이미지는 SCENE 타입
             .novelS3Bucket(s3BucketName)
             .novelS3Key("novels/original/" + storyId + ".txt")
+            .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
+            .generateImage(true)  // 이미지 생성 활성화
             .build();
 
         // Generate via relay server

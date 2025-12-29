@@ -87,10 +87,11 @@ public class ImageGenerationService {
                 .episodeTitle(episodeTitle)
                 .episodeOrder(episodeOrder)
                 .nodeDepth(node.getDepth())
-                .imageType(imageType)  // 이미지 타입 정보 포함
+                .imageType(imageType.name())  // ImageType enum을 String으로 변환
                 .novelS3Bucket(s3BucketName)
                 .novelS3Key("novels/original/" + storyId + ".txt")
                 .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
+                .generateImage(true)  // 이미지 생성 활성화
                 .build();
 
             // Call relay server → AI-IMAGE server (synchronous)

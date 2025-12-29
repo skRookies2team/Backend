@@ -590,16 +590,23 @@ public class GameService {
         // Check if image already exists in database
         Optional<StoryNode> nodeOpt = storyNodeRepository.findById(UUID.fromString(nodeId));
         if (nodeOpt.isPresent() && nodeOpt.get().getImageFileKey() != null) {
+            String rawFileKey = nodeOpt.get().getImageFileKey();
+
+            // Extract fileKey if it's a full URL (legacy data issue)
+            String fileKey = extractFileKeyFromUrl(rawFileKey);
+
+            log.info("DB image_file_key for node {}: {} -> extracted: {}",
+                nodeId, rawFileKey, fileKey);
+
             // Image exists, generate presigned download URL
-            String presignedUrl = s3Service.generatePresignedDownloadUrl(
-                nodeOpt.get().getImageFileKey()
-            );
-            log.info("Using existing image for node {}: {}", nodeId, presignedUrl);
+            String presignedUrl = s3Service.generatePresignedDownloadUrl(fileKey);
+            log.info("Using existing image for node {}: {}", nodeId,
+                presignedUrl.substring(0, Math.min(100, presignedUrl.length())) + "...");
 
             return NodeImageInfo.builder()
                     .imageUrl(presignedUrl)
                     .type(imageType)
-                    .fileKey(nodeOpt.get().getImageFileKey())
+                    .fileKey(fileKey)
                     .altText(generateAltText(node, imageType))
                     .build();
         }
@@ -608,6 +615,11 @@ public class GameService {
         log.info("No existing image found for node {}, generating new image", nodeId);
 
         try {
+            // Generate S3 presigned URL for image upload
+            String imageKey = "game-images/" + storyId + "/" + nodeId + ".png";
+            String imageS3Url = s3Service.generatePresignedUploadUrl(imageKey).getUrl();
+            log.debug("Generated presigned URL for game image upload: {}", imageKey);
+
             com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
                     .storyId(storyId)
                     .nodeId(nodeId)
@@ -617,32 +629,89 @@ public class GameService {
                     .episodeTitle(episode.getTitle())
                     .episodeOrder(episode.getOrder())
                     .nodeDepth(node.getDepth())
-                    .imageType(imageType)  // 이미지 타입 정보 포함
+                    .imageType(imageType.name())  // ImageType enum을 String으로 변환
                     .novelS3Bucket(s3BucketName)
                     .novelS3Key("novels/original/" + storyId + ".txt")
+                    .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
+                    .generateImage(true)  // 이미지 생성 활성화
                     .build();
 
             com.story.game.ai.dto.ImageGenerationResponseDto response = relayServerClient.generateImage(request);
 
-            // Save to database for future use
+            log.info("Image generation response: fileKey={}, imageUrl={}",
+                response.getFileKey(), response.getImageUrl());
+
+            // Use fileKey from response, or fallback to our generated imageKey
+            String finalFileKey = (response.getFileKey() != null && !response.getFileKey().isEmpty())
+                ? response.getFileKey()
+                : imageKey;
+
+            log.info("Using fileKey: {} (from response: {})", finalFileKey,
+                response.getFileKey() != null ? "yes" : "no, using generated key");
+
+            // Save to database for future use (fileKey만 저장)
             if (nodeOpt.isPresent()) {
                 StoryNode nodeEntity = nodeOpt.get();
-                nodeEntity.setImageUrl(response.getImageUrl());
-                nodeEntity.setImageFileKey(response.getFileKey());
+                nodeEntity.setImageFileKey(finalFileKey);
                 nodeEntity.setImageType(imageType.name());
-                storyNodeRepository.save(nodeEntity);
+                storyNodeRepository.saveAndFlush(nodeEntity);  // 즉시 DB에 commit
+                log.info("✅ Saved image_file_key to DB: nodeId={}, fileKey={}",
+                    nodeId, finalFileKey);
             }
 
+            // Generate presigned download URL for the newly created image
+            String presignedUrl = s3Service.generatePresignedDownloadUrl(finalFileKey);
+            log.info("✅ Generated presigned download URL: {}", presignedUrl.substring(0, Math.min(100, presignedUrl.length())) + "...");
+
             return NodeImageInfo.builder()
-                    .imageUrl(response.getImageUrl())
+                    .imageUrl(presignedUrl)  // presigned download URL 사용
                     .type(imageType)
-                    .fileKey(response.getFileKey())
+                    .fileKey(finalFileKey)
                     .altText(generateAltText(node, imageType))
                     .build();
         } catch (Exception e) {
-            log.warn("Failed to generate image: {}", e.getMessage());
+            log.error("Failed to generate image for node {}: {}", nodeId, e.getMessage(), e);
+            // Return null so game can continue without image
             return null;
         }
+    }
+
+    /**
+     * Extract S3 file key from full URL or return as-is if already a key
+     * Handles legacy data where full URLs were stored instead of keys
+     */
+    private String extractFileKeyFromUrl(String fileKeyOrUrl) {
+        if (fileKeyOrUrl == null) {
+            return null;
+        }
+
+        // If it's a full URL, extract the key part after bucket name
+        if (fileKeyOrUrl.startsWith("http://") || fileKeyOrUrl.startsWith("https://")) {
+            try {
+                // Pattern: https://bucket.s3.region.amazonaws.com/key
+                // Extract everything after the first "/" following ".amazonaws.com"
+                int amazonIdx = fileKeyOrUrl.indexOf(".amazonaws.com/");
+                if (amazonIdx != -1) {
+                    return fileKeyOrUrl.substring(amazonIdx + ".amazonaws.com/".length());
+                }
+
+                // Fallback: extract everything after the third "/"
+                int slashCount = 0;
+                for (int i = 0; i < fileKeyOrUrl.length(); i++) {
+                    if (fileKeyOrUrl.charAt(i) == '/') {
+                        slashCount++;
+                        if (slashCount == 3) {
+                            return fileKeyOrUrl.substring(i + 1);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to extract fileKey from URL: {}", fileKeyOrUrl, e);
+            }
+        }
+
+        // Already a key, return as-is
+        return fileKeyOrUrl;
     }
 
     /**
