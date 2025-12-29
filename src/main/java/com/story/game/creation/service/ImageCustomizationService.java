@@ -36,10 +36,10 @@ public class ImageCustomizationService {
     private String s3BucketName;
 
     /**
-     * Regenerate image with custom prompt for any episode nodes
+     * Generate image with custom prompt for any episode nodes
      */
     @Transactional
-    public ImageGenerationResponseDto regenerateImage(
+    public ImageGenerationResponseDto generateNodeImage(
         String storyId,
         String nodeId,
         RegenerateImageRequestDto request
