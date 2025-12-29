@@ -213,13 +213,13 @@ public class ImageGenerationService {
                 .build();
 
             // Call relay server to learn style
-            Boolean result = relayServerClient.learnNovelStyle(styleRequest);
+            com.story.game.ai.dto.NovelStyleLearnResponseDto result = relayServerClient.learnNovelStyle(styleRequest);
 
-            if (result != null && result) {
+            if (result != null) {
                 log.info("✅ Novel style learned successfully for story: {}", storyId);
                 return true;
             } else {
-                log.warn("Novel style learning returned false for story: {}", storyId);
+                log.warn("Novel style learning returned null for story: {}", storyId);
                 return false;
             }
 

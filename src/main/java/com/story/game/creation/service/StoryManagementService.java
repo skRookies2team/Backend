@@ -66,6 +66,42 @@ public class StoryManagementService {
 
         storyCreation = storyCreationRepository.save(storyCreation);
 
+        // Upload novel to S3 first (for AI-IMAGE server)
+        String novelFileKey = "novels/original/" + storyId + ".txt";
+        s3Service.uploadFile(novelFileKey, request.getNovelText());
+        log.info("Uploaded novel to S3: {}", novelFileKey);
+
+        // Generate thumbnail synchronously
+        String thumbnailImageUrl = null;
+        try {
+            // Generate presigned URL for thumbnail upload
+            String thumbnailFileKey = "thumbnails/" + storyId + "/thumbnail.png";
+            String thumbnailS3Url = s3Service.generatePresignedUploadUrl(thumbnailFileKey).getUrl();
+            log.info("Generated presigned URL for thumbnail: {}", thumbnailFileKey);
+
+            // Call AI-IMAGE server to learn style and generate thumbnail
+            com.story.game.ai.dto.NovelStyleLearnRequestDto learnRequest = com.story.game.ai.dto.NovelStyleLearnRequestDto.builder()
+                    .story_id(storyId)
+                    .title(request.getTitle())
+                    .novel_s3_bucket(bucketName)
+                    .novel_s3_key(novelFileKey)
+                    .thumbnail_s3_url(thumbnailS3Url)
+                    .build();
+
+            // Synchronous call to learn style and generate thumbnail
+            com.story.game.ai.dto.NovelStyleLearnResponseDto learnResponse = relayServerClient.learnNovelStyle(learnRequest);
+            if (learnResponse != null && learnResponse.getThumbnail_image_url() != null) {
+                thumbnailImageUrl = learnResponse.getThumbnail_image_url();
+                log.info("Thumbnail generated: {}", thumbnailImageUrl);
+            } else {
+                log.warn("No thumbnail URL in response");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to generate thumbnail: {}", e.getMessage());
+            // Continue without thumbnail
+        }
+
+        // Start AI analysis async
         startAnalysisAsync(storyId, request.getNovelText());
 
         return StoryUploadResponseDto.builder()
@@ -74,6 +110,7 @@ public class StoryManagementService {
                 .genre(storyCreation.getGenre())
                 .status(storyCreation.getStatus())
                 .createdAt(storyCreation.getCreatedAt())
+                .thumbnailImageUrl(thumbnailImageUrl)
                 .build();
     }
 
@@ -160,8 +197,8 @@ public class StoryManagementService {
                         .title(storyCreation.getTitle())
                         .build();
 
-                Boolean styleResult = relayServerClient.learnNovelStyle(styleRequest);
-                if (styleResult) {
+                com.story.game.ai.dto.NovelStyleLearnResponseDto styleResult = relayServerClient.learnNovelStyle(styleRequest);
+                if (styleResult != null) {
                     log.info("Novel style learned successfully for story: {}", storyId);
                 } else {
                     log.warn("Novel style learning failed for story: {} (non-critical)", storyId);
@@ -910,8 +947,8 @@ public class StoryManagementService {
                         .title(storyCreation.getTitle())
                         .build();
 
-                Boolean styleResult = relayServerClient.learnNovelStyle(styleRequest);
-                if (styleResult) {
+                com.story.game.ai.dto.NovelStyleLearnResponseDto styleResult = relayServerClient.learnNovelStyle(styleRequest);
+                if (styleResult != null) {
                     log.info("Novel style learned successfully for story: {}", storyId);
                 } else {
                     log.warn("Novel style learning failed for story: {} (non-critical)", storyId);

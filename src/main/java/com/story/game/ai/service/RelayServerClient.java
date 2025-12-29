@@ -3,6 +3,7 @@ package com.story.game.ai.service;
 import com.story.game.ai.dto.ImageGenerationRequestDto;
 import com.story.game.ai.dto.ImageGenerationResponseDto;
 import com.story.game.ai.dto.NovelStyleLearnRequestDto;
+import com.story.game.ai.dto.NovelStyleLearnResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,29 +25,33 @@ public class RelayServerClient {
     /**
      * Request novel style learning from relay server
      */
-    public Boolean learnNovelStyle(NovelStyleLearnRequestDto request) {
+    public NovelStyleLearnResponseDto learnNovelStyle(NovelStyleLearnRequestDto request) {
         log.info("Requesting novel style learning from relay server for story: {}", request.getStory_id());
 
         try {
-            Boolean response = relayServerWebClient.post()
+            NovelStyleLearnResponseDto response = relayServerWebClient.post()
                 .uri("/ai/learn-novel-style")
                 .bodyValue(request)
                 .retrieve()
-                .bodyToMono(Boolean.class)
+                .bodyToMono(NovelStyleLearnResponseDto.class)
                 .timeout(Duration.ofSeconds(30))
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.error("Relay server error during novel style learning: {} - {}",
                         e.getStatusCode(), e.getResponseBodyAsString());
-                    return Mono.just(false);
+                    return Mono.empty();
                 })
                 .block();
 
-            log.info("Novel style learning result: {}", response != null && response ? "success" : "failed");
-            return response != null && response;
+            if (response != null && response.getThumbnail_image_url() != null) {
+                log.info("Novel style learning completed with thumbnail: {}", response.getThumbnail_image_url());
+            } else {
+                log.warn("Novel style learning completed but no thumbnail generated");
+            }
+            return response;
 
         } catch (Exception e) {
             log.error("Failed to learn novel style: {}", e.getMessage(), e);
-            return false;
+            return null;
         }
     }
 
