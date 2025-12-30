@@ -19,6 +19,7 @@ import com.story.game.gameplay.entity.GameSession;
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.rag.dto.GameProgressUpdateRequestDto;
 import com.story.game.rag.service.RagService;
+import com.story.game.achievement.service.AchievementService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.entity.EpisodeEnding;
 import com.story.game.story.entity.StoryChoice;
@@ -73,6 +74,7 @@ public class GameService {
     private final ExpressionParser parser = new SpelExpressionParser();
     private final RagService ragService;
     private final BgmService bgmService;
+    private final AchievementService achievementService;
 
     @Transactional
     public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
@@ -417,6 +419,18 @@ public class GameService {
         session.setIsCompleted(true);
         session.setFinalEndingId(matchedFinalEnding != null ? matchedFinalEnding.getId() : "default_end");
         gameSessionRepository.save(session);
+
+        // Update user achievements after game completion
+        if (session.getUser() != null) {
+            try {
+                achievementService.checkAndUpdateAchievements(session.getUser());
+                log.info("Achievement progress updated for user {} after game completion", session.getUser().getUsername());
+            } catch (Exception e) {
+                log.error("Failed to update achievements for user {}: {}",
+                    session.getUser().getUsername(), e.getMessage(), e);
+                // Continue anyway - achievement update failure shouldn't break game flow
+            }
+        }
 
         return handleGameEndResponse(session, storyCreation, lastEpisodeEnding, matchedFinalEnding);
     }

@@ -15,6 +15,7 @@ import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.rag.dto.CharacterIndexRequestDto;
 import com.story.game.rag.service.RagService;
+import com.story.game.achievement.service.AchievementService;
 import com.story.game.story.entity.Episode;
 import com.story.game.story.mapper.StoryMapper;
 import com.story.game.story.repository.EpisodeEndingRepository;
@@ -53,6 +54,7 @@ public class SequentialGenerationService {
     private final S3Service s3Service;
     private final RagService ragService;
     private final ImageGenerationService imageGenerationService;
+    private final AchievementService achievementService;
     private final SequentialGenerationService self;
 
     public SequentialGenerationService(
@@ -67,6 +69,7 @@ public class SequentialGenerationService {
             S3Service s3Service,
             RagService ragService,
             ImageGenerationService imageGenerationService,
+            AchievementService achievementService,
             @org.springframework.context.annotation.Lazy SequentialGenerationService self) {
         this.storyCreationRepository = storyCreationRepository;
         this.storyDataRepository = storyDataRepository;
@@ -79,6 +82,7 @@ public class SequentialGenerationService {
         this.s3Service = s3Service;
         this.ragService = ragService;
         this.imageGenerationService = imageGenerationService;
+        this.achievementService = achievementService;
         this.self = self;
     }
 
@@ -258,6 +262,19 @@ public class SequentialGenerationService {
 
                 // 캐릭터 인덱싱은 사용자가 스텝 2에서 캐릭터 선택 시 자동으로 수행됩니다.
                 log.info("Story generation completed. Character indexing was done when user selected characters.");
+
+                // Update user achievements after story creation completion
+                if (storyCreation.getUser() != null) {
+                    try {
+                        achievementService.checkAndUpdateAchievements(storyCreation.getUser());
+                        log.info("Achievement progress updated for user {} after story creation",
+                            storyCreation.getUser().getUsername());
+                    } catch (Exception e) {
+                        log.error("Failed to update achievements for user {}: {}",
+                            storyCreation.getUser().getUsername(), e.getMessage(), e);
+                        // Continue anyway - achievement update failure shouldn't break creation flow
+                    }
+                }
             } else {
                 storyCreation.setStatus(StoryCreation.CreationStatus.AWAITING_USER_ACTION);
                 storyCreation.setCurrentPhase("AWAITING_NEXT_EPISODE_TRIGGER");

@@ -16,7 +16,9 @@ import com.story.game.auth.repository.UserRepository;
 import com.story.game.common.exception.ExternalServiceException;
 import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
+import com.story.game.achievement.service.AchievementService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PostService {
 
     private final PostRepository postRepository;
@@ -37,6 +40,7 @@ public class PostService {
     private final PostMediaRepository postMediaRepository;
     private final S3Service s3Service;
     private final FileUploadProperties uploadProperties;
+    private final AchievementService achievementService;
 
     @Transactional
     public PostResponseDto createPost(String username, CreatePostRequestDto request) {
@@ -50,6 +54,15 @@ public class PostService {
                 .build();
 
         postRepository.save(post);
+
+        // Update user achievements after post creation
+        try {
+            achievementService.checkAndUpdateAchievements(user);
+            log.info("Achievement progress updated for user {} after post creation", user.getUsername());
+        } catch (Exception e) {
+            log.error("Failed to update achievements for user {}: {}", user.getUsername(), e.getMessage(), e);
+            // Continue anyway - achievement update failure shouldn't break post creation
+        }
 
         return PostResponseDto.from(post, false, false);
     }
