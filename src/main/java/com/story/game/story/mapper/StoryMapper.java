@@ -35,15 +35,18 @@ public class StoryMapper {
     private final EpisodeRepository episodeRepository;
 
     @Transactional
-    public void saveEpisodeDtoToDb(EpisodeDto episodeDto, StoryCreation storyCreation) {
+    public List<StoryNode> saveEpisodeDtoToDb(EpisodeDto episodeDto, StoryCreation storyCreation) {
         Episode episode = toEpisodeEntity(episodeDto, storyCreation);
+        List<StoryNode> allNodes = new ArrayList<>();
         if (episodeDto.getNodes() != null && !episodeDto.getNodes().isEmpty()) {
             StoryNode rootNode = toStoryNodeEntityRecursive(episodeDto.getNodes().get(0), episode, null);
-            List<StoryNode> allNodes = new ArrayList<>();
             flattenNodeTree(rootNode, allNodes, new HashSet<>());
             episode.setNodes(allNodes);
         }
         episodeRepository.save(episode);
+
+        // Return the flattened node list for image generation
+        return allNodes;
     }
 
     private void flattenNodeTree(StoryNode node, List<StoryNode> flatList, Set<StoryNode> visited) {

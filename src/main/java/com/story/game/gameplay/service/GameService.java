@@ -611,8 +611,31 @@ public class GameService {
                     .build();
         }
 
-        // Image doesn't exist, generate new one
-        log.info("No existing image found for node {}, generating new image", nodeId);
+        // Image doesn't exist, check if this node should have an image
+        log.info("No existing image found for node {}", nodeId);
+
+        // Only generate images for root nodes (depth=0) and ending nodes (no children)
+        boolean shouldGenerateImage = false;
+        if (nodeOpt.isPresent()) {
+            StoryNode nodeEntity = nodeOpt.get();
+            // Root nodes (depth=0)
+            if (nodeEntity.getDepth() != null && nodeEntity.getDepth() == 0) {
+                shouldGenerateImage = true;
+                log.info("Node {} is a root node (depth=0), image generation needed", nodeId);
+            }
+            // Ending nodes (no outgoing choices)
+            else if (nodeEntity.getOutgoingChoices() == null || nodeEntity.getOutgoingChoices().isEmpty()) {
+                shouldGenerateImage = true;
+                log.info("Node {} is an ending node (no choices), image generation needed", nodeId);
+            }
+        }
+
+        if (!shouldGenerateImage) {
+            log.info("Node {} is a middle node (depth > 0 with choices), skipping image generation", nodeId);
+            return null;  // No image needed for middle nodes
+        }
+
+        log.info("Generating new image for node {}", nodeId);
 
         try {
             // Generate S3 presigned URL for image upload
@@ -778,7 +801,31 @@ public class GameService {
     }
 
     public List<StoryData> getAllStories() {
-        return storyDataRepository.findAll();
+        List<StoryData> stories = storyDataRepository.findAll();
+
+        // Generate presigned URLs for thumbnails
+        for (StoryData story : stories) {
+            if (story.getThumbnailFileKey() != null && !story.getThumbnailFileKey().isEmpty()) {
+                try {
+                    // Extract fileKey if it's a full URL (legacy data)
+                    String fileKey = extractFileKeyFromUrl(story.getThumbnailFileKey());
+
+                    // Generate presigned download URL
+                    String presignedUrl = s3Service.generatePresignedDownloadUrl(fileKey);
+
+                    // Temporarily set the presigned URL (for frontend display)
+                    // Note: This modifies the entity but doesn't persist to DB
+                    story.setThumbnailFileKey(presignedUrl);
+                    log.debug("Generated presigned URL for story {} thumbnail", story.getId());
+                } catch (Exception e) {
+                    log.warn("Failed to generate presigned URL for story {} thumbnail: {}",
+                        story.getId(), e.getMessage());
+                    // Keep original value if presigned URL generation fails
+                }
+            }
+        }
+
+        return stories;
     }
 
     @Transactional(readOnly = true)

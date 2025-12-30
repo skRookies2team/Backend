@@ -187,10 +187,14 @@ public class SequentialGenerationService {
                 newEpisodeDto.getIntroText() != null ? newEpisodeDto.getIntroText().length() : 0);
             log.info("[LOG-STEP 4] AI DTO is valid. Proceeding to save to DB...");
 
-            // 1. Save the new episode to the database
-            storyMapper.saveEpisodeDtoToDb(newEpisodeDto, storyCreation);
-            
-            log.info("[LOG-STEP 5] saveEpisodeDtoToDb completed. Fetching new entity...");
+            // 1. Save the new episode to the database and get the flattened node list
+            List<com.story.game.story.entity.StoryNode> savedNodes = storyMapper.saveEpisodeDtoToDb(newEpisodeDto, storyCreation);
+
+            log.info("[LOG-STEP 5] saveEpisodeDtoToDb completed. {} nodes saved.", savedNodes.size());
+
+            // Flush to DB immediately so images can reference the persisted nodes
+            episodeRepository.flush();
+            log.info("[LOG-STEP 5.5] DB flushed. Nodes are now persisted.");
 
             // Fetch the episode entity we just saved
             Episode newEpisodeEntity = episodeRepository.findByStoryAndOrder(storyCreation, episodeOrder)
@@ -218,10 +222,10 @@ public class SequentialGenerationService {
                     episodeEndingRepository.save(endingEntity);
                 }
             }
-            log.info("[LOG-STEP 7] Episode endings processed. Generating images for root and ending nodes...");
+            log.info("[LOG-STEP 7] Episode endings processed. Generating images for nodes (inline as they're saved)...");
 
-            // Generate images for root and ending nodes
-            generateImagesForEpisode(storyCreation.getId(), newEpisodeEntity, newEpisodeDto);
+            // Generate images for each node immediately after save
+            generateImagesForNodesInline(storyCreation.getId(), savedNodes, newEpisodeEntity.getTitle(), newEpisodeEntity.getOrder());
 
             log.info("[LOG-STEP 8] Image generation completed. Uploading snapshot to S3...");
 
@@ -377,8 +381,50 @@ public class SequentialGenerationService {
     }
 
     /**
-     * Generate images for root and ending nodes in an episode
+     * Generate images for nodes inline (immediately after DB save)
+     * Processes nodes sequentially in the order they were saved
      */
+    private void generateImagesForNodesInline(
+        String storyId,
+        List<com.story.game.story.entity.StoryNode> nodes,
+        String episodeTitle,
+        Integer episodeOrder
+    ) {
+        log.info("🎨 Starting inline image generation for {} nodes in episode {}", nodes.size(), episodeOrder);
+
+        int imageCount = 0;
+        for (com.story.game.story.entity.StoryNode node : nodes) {
+            // Generate image for this node if needed (root or ending nodes)
+            // ImageGenerationService will check if image is needed based on depth/type
+            try {
+                log.info("🖼️  Processing node {} (depth={}, type={})",
+                    node.getId(), node.getDepth(), node.getNodeType());
+
+                imageGenerationService.generateAndSaveNodeImage(
+                    storyId, node, episodeTitle, episodeOrder
+                );
+
+                // Only count if image was actually generated
+                if (imageGenerationService.shouldGenerateImage(node)) {
+                    imageCount++;
+                    log.info("✅ Image {}/{} generated for node {} (depth={})",
+                        imageCount, nodes.size(), node.getId(), node.getDepth());
+                }
+            } catch (Exception e) {
+                log.error("❌ Failed to generate image for node {}: {}", node.getId(), e.getMessage(), e);
+                // Continue with next node even if one fails
+            }
+        }
+
+        log.info("🎉 Image generation completed: {} images generated out of {} nodes",
+            imageCount, nodes.size());
+    }
+
+    /**
+     * Generate images for root and ending nodes in an episode
+     * @deprecated Use generateImagesForNodesInline instead for better performance
+     */
+    @Deprecated
     private void generateImagesForEpisode(
         String storyId,
         Episode episode,
@@ -407,7 +453,9 @@ public class SequentialGenerationService {
 
     /**
      * Recursively process node tree to generate images for root and ending nodes
+     * @deprecated Use generateImagesForNodesInline instead for better performance
      */
+    @Deprecated
     private void processNodeTreeForImages(
         String storyId,
         com.story.game.story.entity.StoryNode node,
