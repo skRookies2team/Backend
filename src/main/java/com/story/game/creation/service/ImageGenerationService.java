@@ -113,14 +113,20 @@ public class ImageGenerationService {
                 }
             }
 
-            // If style learning is needed, learn and retry
+            // If style learning is needed, learn and retry (max 1 retry)
             if (retryWithStyleLearning) {
                 log.info("Attempting to learn novel style for story: {}", storyId);
                 boolean styleLearnSuccess = ensureNovelStyleLearned(storyId);
 
                 if (styleLearnSuccess) {
-                    log.info("Novel style learned successfully. Retrying image generation...");
-                    response = relayServerClient.generateImage(request);
+                    log.info("Novel style learned successfully. Retrying image generation (1/1)...");
+                    try {
+                        response = relayServerClient.generateImage(request);
+                    } catch (Exception retryException) {
+                        log.error("Retry failed after style learning for story {}: {}",
+                            storyId, retryException.getMessage());
+                        return;  // No further retries
+                    }
                 } else {
                     log.error("Failed to learn novel style for story: {}", storyId);
                     return;

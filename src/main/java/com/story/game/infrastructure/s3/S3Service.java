@@ -78,9 +78,8 @@ public class S3Service {
         try {
             log.info("Downloading file from S3: {}", fileKey);
 
-            S3Object s3Object = amazonS3.getObject(bucketName, fileKey);
-
-            try (InputStream inputStream = s3Object.getObjectContent()) {
+            try (S3Object s3Object = amazonS3.getObject(bucketName, fileKey);
+                 InputStream inputStream = s3Object.getObjectContent()) {
                 String content = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
                 log.info("File downloaded successfully: {} ({} bytes)", fileKey, content.length());
                 return content;

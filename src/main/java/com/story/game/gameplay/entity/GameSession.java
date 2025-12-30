@@ -75,6 +75,10 @@ public class GameSession {
     @Column(name = "current_episode_bgm", columnDefinition = "json")
     private String currentEpisodeBgmJson;  // Stores BgmDto as JSON for current episode
 
+    @Version
+    @Column(name = "version")
+    private Long version;  // Optimistic locking for concurrent access protection
+
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

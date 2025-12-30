@@ -710,7 +710,7 @@ public class GameService {
                 StoryNode nodeEntity = nodeOpt.get();
                 nodeEntity.setImageFileKey(finalFileKey);
                 nodeEntity.setImageType(imageType.name());
-                storyNodeRepository.saveAndFlush(nodeEntity);  // 즉시 DB에 commit
+                storyNodeRepository.save(nodeEntity);  // Transaction boundary에서 commit
                 log.info("✅ Saved image_file_key to DB: nodeId={}, fileKey={}",
                     nodeId, finalFileKey);
             }
@@ -833,8 +833,14 @@ public class GameService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<StoryData> getAllStories() {
         List<StoryData> stories = storyDataRepository.findAll();
+
+        // TODO: Consider implementing pagination to avoid loading all stories into memory
+        if (stories.size() > 100) {
+            log.warn("Loading {} stories into memory. Consider implementing pagination for better performance.", stories.size());
+        }
 
         // Generate presigned URLs for thumbnails
         for (StoryData story : stories) {

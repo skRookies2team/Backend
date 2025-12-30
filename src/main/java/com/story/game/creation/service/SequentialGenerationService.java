@@ -192,11 +192,7 @@ public class SequentialGenerationService {
 
             log.info("[LOG-STEP 5] saveEpisodeDtoToDb completed. {} nodes saved.", savedNodes.size());
 
-            // Flush to DB immediately so images can reference the persisted nodes
-            episodeRepository.flush();
-            log.info("[LOG-STEP 5.5] DB flushed. Nodes are now persisted.");
-
-            // Fetch the episode entity we just saved
+            // Fetch the episode entity we just saved (no flush needed - managed by transaction)
             Episode newEpisodeEntity = episodeRepository.findByStoryAndOrder(storyCreation, episodeOrder)
                 .orElseThrow(() -> new RuntimeException("Failed to fetch the newly created episode for order: " + episodeOrder));
 
