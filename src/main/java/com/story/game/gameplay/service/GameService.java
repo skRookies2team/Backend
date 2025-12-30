@@ -813,10 +813,11 @@ public class GameService {
                     // Generate presigned download URL
                     String presignedUrl = s3Service.generatePresignedDownloadUrl(fileKey);
 
-                    // Temporarily set the presigned URL (for frontend display)
+                    // Set the presigned URL to thumbnailUrl (for frontend display)
                     // Note: This modifies the entity but doesn't persist to DB
-                    story.setThumbnailFileKey(presignedUrl);
-                    log.debug("Generated presigned URL for story {} thumbnail", story.getId());
+                    story.setThumbnailUrl(presignedUrl);
+                    log.debug("Generated presigned URL for story {} thumbnail: {}",
+                        story.getId(), presignedUrl.substring(0, Math.min(100, presignedUrl.length())) + "...");
                 } catch (Exception e) {
                     log.warn("Failed to generate presigned URL for story {} thumbnail: {}",
                         story.getId(), e.getMessage());
