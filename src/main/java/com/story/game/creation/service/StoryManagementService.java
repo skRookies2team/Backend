@@ -86,6 +86,8 @@ public class StoryManagementService {
                     .novel_s3_bucket(bucketName)
                     .novel_s3_key(novelFileKey)
                     .thumbnail_s3_url(thumbnailS3Url)
+                    .thumbnail_s3_bucket(bucketName)  // 추가
+                    .thumbnail_s3_key(thumbnailFileKey)  // 추가
                     .build();
 
             // Synchronous call to learn style and generate thumbnail

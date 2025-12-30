@@ -71,12 +71,24 @@ public class ImageCustomizationService {
         // Generate via relay server
         ImageGenerationResponseDto response = relayServerClient.generateImage(imageRequest);
 
-        // Update node
-        node.setImageUrl(response.getImageUrl());
-        node.setImageFileKey(response.getFileKey());
+        // Extract fileKey if response contains full URL
+        String fileKey = extractFileKeyFromUrl(response.getFileKey());
+
+        // Update node - only store fileKey, not direct URL
+        node.setImageUrl(null);  // Don't store direct S3 URL
+        node.setImageFileKey(fileKey);  // Store extracted fileKey
         storyNodeRepository.save(node);
 
-        return response;
+        log.info("Custom image generated for node {}. FileKey: {}", nodeId, fileKey);
+
+        // Generate presigned download URL for frontend
+        String presignedUrl = s3Service.generatePresignedDownloadUrl(fileKey);
+
+        // Return response with presigned URL instead of direct S3 URL
+        return ImageGenerationResponseDto.builder()
+            .imageUrl(presignedUrl)  // Use presigned URL instead of direct URL
+            .fileKey(response.getFileKey())
+            .build();
     }
 
     /**
@@ -119,7 +131,9 @@ public class ImageCustomizationService {
 
         String presignedUrl = null;
         if (node.getImageFileKey() != null) {
-            presignedUrl = s3Service.generatePresignedDownloadUrl(node.getImageFileKey());
+            // Extract fileKey if it's a full URL (legacy data)
+            String fileKey = extractFileKeyFromUrl(node.getImageFileKey());
+            presignedUrl = s3Service.generatePresignedDownloadUrl(fileKey);
         }
 
         return NodeImageResponseDto.builder()
@@ -146,5 +160,40 @@ public class ImageCustomizationService {
         log.info("Custom image request for Episode {} node {}", episode.getOrder(), nodeId);
 
         return node;
+    }
+
+    /**
+     * Extract fileKey from URL if the input is a full S3 URL
+     * If input is already a fileKey, return as-is
+     */
+    private String extractFileKeyFromUrl(String fileKeyOrUrl) {
+        if (fileKeyOrUrl == null) {
+            return null;
+        }
+
+        // If it's a full URL, extract the key part after bucket name
+        if (fileKeyOrUrl.startsWith("http://") || fileKeyOrUrl.startsWith("https://")) {
+            try {
+                // Pattern: https://bucket.s3.region.amazonaws.com/key
+                // Extract everything after the first "/" following ".amazonaws.com"
+                int amazonIdx = fileKeyOrUrl.indexOf(".amazonaws.com/");
+                if (amazonIdx != -1) {
+                    String extracted = fileKeyOrUrl.substring(amazonIdx + ".amazonaws.com/".length());
+
+                    // Remove query parameters if present (presigned URL case)
+                    int queryIdx = extracted.indexOf("?");
+                    if (queryIdx != -1) {
+                        extracted = extracted.substring(0, queryIdx);
+                    }
+
+                    return extracted;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to extract fileKey from URL: {}", fileKeyOrUrl, e);
+            }
+        }
+
+        // Already a fileKey, return as-is
+        return fileKeyOrUrl;
     }
 }

@@ -57,7 +57,7 @@ public class S3Service {
     public String generatePresignedDownloadUrl(String fileKey) {
         Date expiration = new Date();
         long expTimeMillis = expiration.getTime();
-        expTimeMillis += 1000 * 60 * 60; // 1시간 유효
+        expTimeMillis += 1000 * 60 * 60 * 24 * 7; // 7일 유효
         expiration.setTime(expTimeMillis);
 
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, fileKey)

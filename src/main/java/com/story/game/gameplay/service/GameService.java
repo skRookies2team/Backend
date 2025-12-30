@@ -658,92 +658,10 @@ public class GameService {
                     .build();
         }
 
-        // Image doesn't exist, check if this node should have an image
-        log.info("No existing image found for node {}", nodeId);
-
-        // Only generate images for root nodes (depth=0) and ending nodes (no children)
-        boolean shouldGenerateImage = false;
-        if (nodeOpt.isPresent()) {
-            StoryNode nodeEntity = nodeOpt.get();
-            // Root nodes (depth=0)
-            if (nodeEntity.getDepth() != null && nodeEntity.getDepth() == 0) {
-                shouldGenerateImage = true;
-                log.info("Node {} is a root node (depth=0), image generation needed", nodeId);
-            }
-            // Ending nodes (no outgoing choices)
-            else if (nodeEntity.getOutgoingChoices() == null || nodeEntity.getOutgoingChoices().isEmpty()) {
-                shouldGenerateImage = true;
-                log.info("Node {} is an ending node (no choices), image generation needed", nodeId);
-            }
-        }
-
-        if (!shouldGenerateImage) {
-            log.info("Node {} is a middle node (depth > 0 with choices), skipping image generation", nodeId);
-            return null;  // No image needed for middle nodes
-        }
-
-        log.info("Generating new image for node {}", nodeId);
-
-        try {
-            // Generate S3 presigned URL for image upload
-            String imageKey = "game-images/" + storyId + "/" + nodeId + ".png";
-            String imageS3Url = s3Service.generatePresignedUploadUrl(imageKey).getUrl();
-            log.debug("Generated presigned URL for game image upload: {}", imageKey);
-
-            com.story.game.ai.dto.ImageGenerationRequestDto request = com.story.game.ai.dto.ImageGenerationRequestDto.builder()
-                    .storyId(storyId)
-                    .nodeId(nodeId)
-                    .nodeText(node.getText())
-                    .situation(node.getDetails() != null ? node.getDetails().getSituation() : null)
-                    .npcEmotions(node.getDetails() != null ? node.getDetails().getNpcEmotions() : null)
-                    .episodeTitle(episode.getTitle())
-                    .episodeOrder(episode.getOrder())
-                    .nodeDepth(node.getDepth())
-                    .imageType(imageType.name())  // ImageType enum을 String으로 변환
-                    .novelS3Bucket(s3BucketName)
-                    .novelS3Key("novels/original/" + storyId + ".txt")
-                    .imageS3Url(imageS3Url)  // AI-IMAGE 서버가 이 URL로 이미지 업로드
-                    .generateImage(true)  // 이미지 생성 활성화
-                    .build();
-
-            com.story.game.ai.dto.ImageGenerationResponseDto response = relayServerClient.generateImage(request);
-
-            log.info("Image generation response: fileKey={}, imageUrl={}",
-                response.getFileKey(), response.getImageUrl());
-
-            // Use fileKey from response, or fallback to our generated imageKey
-            String finalFileKey = (response.getFileKey() != null && !response.getFileKey().isEmpty())
-                ? response.getFileKey()
-                : imageKey;
-
-            log.info("Using fileKey: {} (from response: {})", finalFileKey,
-                response.getFileKey() != null ? "yes" : "no, using generated key");
-
-            // Save to database for future use (fileKey만 저장)
-            if (nodeOpt.isPresent()) {
-                StoryNode nodeEntity = nodeOpt.get();
-                nodeEntity.setImageFileKey(finalFileKey);
-                nodeEntity.setImageType(imageType.name());
-                storyNodeRepository.save(nodeEntity);  // Transaction boundary에서 commit
-                log.info("✅ Saved image_file_key to DB: nodeId={}, fileKey={}",
-                    nodeId, finalFileKey);
-            }
-
-            // Generate presigned download URL for the newly created image
-            String presignedUrl = s3Service.generatePresignedDownloadUrl(finalFileKey);
-            log.info("✅ Generated presigned download URL: {}", presignedUrl.substring(0, Math.min(100, presignedUrl.length())) + "...");
-
-            return NodeImageInfo.builder()
-                    .imageUrl(presignedUrl)  // presigned download URL 사용
-                    .type(imageType)
-                    .fileKey(finalFileKey)
-                    .altText(generateAltText(node, imageType))
-                    .build();
-        } catch (Exception e) {
-            log.error("Failed to generate image for node {}: {}", nodeId, e.getMessage(), e);
-            // Return null so game can continue without image
-            return null;
-        }
+        // Image doesn't exist - don't generate during gameplay
+        // Images should only be generated during story creation
+        log.info("No existing image found for node {}. Image generation during gameplay is disabled.", nodeId);
+        return null;
     }
 
     /**
