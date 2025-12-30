@@ -71,6 +71,10 @@ public class GameSession {
     @Column(name = "final_ending_id")
     private String finalEndingId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "current_episode_bgm", columnDefinition = "json")
+    private String currentEpisodeBgmJson;  // Stores BgmDto as JSON for current episode
+
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

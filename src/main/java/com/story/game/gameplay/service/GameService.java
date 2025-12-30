@@ -136,12 +136,24 @@ public class GameService {
                 storyMapper.toEpisodeDto(firstEpisode)
         );
 
-        // Get BGM for first node
+        // Get BGM for first episode (episode-based, not node-based)
         com.story.game.gameplay.dto.BgmDto bgm = null;
         try {
-            bgm = bgmService.getBgmForNode(storyDataId, rootNode.getId(), rootNode.getText());
+            bgm = bgmService.getBgmForEpisode(
+                storyDataId,
+                firstEpisode.getId(),
+                firstEpisode.getTitle(),
+                firstEpisode.getIntroText()
+            );
+
+            // Save BGM to session for this episode
+            if (bgm != null) {
+                session.setCurrentEpisodeBgmJson(objectMapper.writeValueAsString(bgm));
+                gameSessionRepository.save(session);
+                log.info("BGM set for episode {}: mood={}", firstEpisode.getId(), bgm.getMood());
+            }
         } catch (Exception e) {
-            log.warn("Failed to get BGM for first node: {}", e.getMessage());
+            log.warn("Failed to get BGM for first episode: {}", e.getMessage());
         }
 
         return buildGameStateResponse(session, storyCreation, firstEpisode, rootNode, true, nodeImage, bgm);
@@ -184,12 +196,17 @@ public class GameService {
                 storyMapper.toEpisodeDto(currentEpisode)
         );
 
-        // Get BGM for current node
+        // Get BGM for current episode (from session storage)
         com.story.game.gameplay.dto.BgmDto bgm = null;
         try {
-            bgm = bgmService.getBgmForNode(session.getStoryDataId(), currentNode.getId(), currentNode.getText());
+            if (session.getCurrentEpisodeBgmJson() != null) {
+                bgm = objectMapper.readValue(session.getCurrentEpisodeBgmJson(), com.story.game.gameplay.dto.BgmDto.class);
+                log.debug("Using stored BGM for episode {}: mood={}", currentEpisode.getId(), bgm.getMood());
+            } else {
+                log.warn("No BGM stored for current episode {}", currentEpisode.getId());
+            }
         } catch (Exception e) {
-            log.warn("Failed to get BGM for current node: {}", e.getMessage());
+            log.warn("Failed to retrieve BGM for current episode: {}", e.getMessage());
         }
 
         return buildGameStateResponse(session, storyCreation, currentEpisode, currentNode, isFirstNodeOfEpisode, nodeImage, bgm);
@@ -302,26 +319,18 @@ public class GameService {
                     storyMapper.toEpisodeDto(currentNode.getEpisode())
             );
 
-            // Get BGM for current node (from cache or AI server)
+            // Get BGM for current episode (from session storage)
+            // Since we're in the same episode, use the stored BGM
             com.story.game.gameplay.dto.BgmDto bgm = null;
             try {
-                bgm = bgmService.getBgmForNode(
-                        session.getStoryDataId(),
-                        nextNode.getId(),
-                        nextNode.getText()
-                );
-                log.info("BGM retrieved for node {}: mood={}", nextNode.getId(),
-                        bgm != null ? bgm.getMood() : "null");
+                if (session.getCurrentEpisodeBgmJson() != null) {
+                    bgm = objectMapper.readValue(session.getCurrentEpisodeBgmJson(), com.story.game.gameplay.dto.BgmDto.class);
+                    log.debug("Using stored BGM for episode (same episode): mood={}", bgm.getMood());
+                } else {
+                    log.warn("No BGM stored for current episode");
+                }
             } catch (Exception e) {
-                log.warn("Failed to get BGM for node {}: {}", nextNode.getId(), e.getMessage());
-            }
-
-            // Pre-load BGM for next possible nodes (async, non-blocking)
-            try {
-                bgmService.preloadNextNodesBgm(session.getStoryDataId(), nextNodeChoices);
-                log.debug("Started pre-loading BGM for {} next nodes", nextNodeChoices.size());
-            } catch (Exception e) {
-                log.warn("Failed to start BGM pre-loading: {}", e.getMessage());
+                log.warn("Failed to retrieve BGM for current episode: {}", e.getMessage());
             }
 
             return buildGameStateResponse(session, currentNode.getEpisode().getStory(), currentNode.getEpisode(), nextNode, false, nodeImage, bgm);
@@ -373,12 +382,24 @@ public class GameService {
                     storyMapper.toStoryNodeDto(rootNode),
                     storyMapper.toEpisodeDto(nextEpisode)
             );
-            // Get BGM for next episode root node
+            // Get BGM for next episode (episode-based)
             com.story.game.gameplay.dto.BgmDto bgm = null;
             try {
-                bgm = bgmService.getBgmForNode(session.getStoryDataId(), rootNode.getId(), rootNode.getText());
+                bgm = bgmService.getBgmForEpisode(
+                    session.getStoryDataId(),
+                    nextEpisode.getId(),
+                    nextEpisode.getTitle(),
+                    nextEpisode.getIntroText()
+                );
+
+                // Save BGM to session for this new episode
+                if (bgm != null) {
+                    session.setCurrentEpisodeBgmJson(objectMapper.writeValueAsString(bgm));
+                    gameSessionRepository.save(session);
+                    log.info("BGM set for next episode {}: mood={}", nextEpisode.getId(), bgm.getMood());
+                }
             } catch (Exception e) {
-                log.warn("Failed to get BGM for next episode root node: {}", e.getMessage());
+                log.warn("Failed to get BGM for next episode: {}", e.getMessage());
             }
 
             GameStateResponseDto response = buildGameStateResponse(session, storyCreation, nextEpisode, rootNode, true, nodeImage, bgm);

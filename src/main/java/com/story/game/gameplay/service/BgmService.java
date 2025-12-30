@@ -32,13 +32,55 @@ public class BgmService {
     private final ConcurrentHashMap<String, BgmDto> bgmCache = new ConcurrentHashMap<>();
 
     /**
+     * Get BGM for an episode (based on episode title and intro)
+     * AI server judges the appropriate music for the entire episode
+     *
+     * @param storyId Story ID
+     * @param episodeId Episode ID
+     * @param episodeTitle Episode title
+     * @param episodeIntro Episode intro text
+     * @return BGM data (may be null if recommendation fails)
+     */
+    public BgmDto getBgmForEpisode(Long storyId, UUID episodeId, String episodeTitle, String episodeIntro) {
+        String cacheKey = generateEpisodeCacheKey(storyId, episodeId);
+
+        // Check cache first
+        BgmDto cachedBgm = bgmCache.get(cacheKey);
+        if (cachedBgm != null) {
+            log.debug("BGM cache hit for episode: {} (mood={})", episodeId, cachedBgm.getMood());
+            return cachedBgm;
+        }
+
+        // Cache miss - request from AI server with episode context
+        log.info("BGM cache miss for episode: {} - requesting from AI server", episodeId);
+
+        // Combine episode title and intro for better BGM recommendation
+        String prompt = String.format("에피소드: %s\n\n%s",
+            episodeTitle != null ? episodeTitle : "",
+            episodeIntro != null ? episodeIntro : "");
+
+        BgmDto bgm = requestBgmFromAi(prompt);
+
+        if (bgm != null) {
+            bgmCache.put(cacheKey, bgm);
+            log.info("BGM cached for episode: {} (mood={})", episodeId, bgm.getMood());
+        } else {
+            log.warn("Failed to get BGM for episode: {}", episodeId);
+        }
+
+        return bgm;
+    }
+
+    /**
      * Get BGM for a node (from cache or AI server)
+     * @deprecated Use getBgmForEpisode for better consistency
      *
      * @param storyId Story ID
      * @param nodeId Node ID
      * @param nodeText Node text for BGM recommendation
      * @return BGM data (may be null if recommendation fails)
      */
+    @Deprecated
     public BgmDto getBgmForNode(Long storyId, UUID nodeId, String nodeText) {
         String cacheKey = generateCacheKey(storyId, nodeId);
 
@@ -125,7 +167,14 @@ public class BgmService {
     }
 
     /**
-     * Generate cache key
+     * Generate cache key for episode
+     */
+    private String generateEpisodeCacheKey(Long storyId, UUID episodeId) {
+        return "story:" + storyId + ":episode:" + episodeId;
+    }
+
+    /**
+     * Generate cache key for node
      */
     private String generateCacheKey(Long storyId, UUID nodeId) {
         return "story:" + storyId + ":node:" + nodeId;
