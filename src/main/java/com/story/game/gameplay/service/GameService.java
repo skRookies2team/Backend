@@ -438,6 +438,17 @@ public class GameService {
             displayText = lastEpisodeEnding.getText();
         }
 
+        // Get BGM from session (maintain last episode BGM for ending screen)
+        com.story.game.gameplay.dto.BgmDto bgm = null;
+        try {
+            if (session.getCurrentEpisodeBgmJson() != null) {
+                bgm = objectMapper.readValue(session.getCurrentEpisodeBgmJson(), com.story.game.gameplay.dto.BgmDto.class);
+                log.debug("Using stored BGM for game ending: mood={}", bgm.getMood());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to retrieve BGM for game ending: {}", e.getMessage());
+        }
+
         return GameStateResponseDto.builder()
                 .sessionId(session.getId())
                 .currentEpisodeId(session.getCurrentEpisodeId())
@@ -450,6 +461,7 @@ public class GameService {
                 .nodeText(displayText)
 
                 .choices(Collections.emptyList())
+                .bgm(bgm)
                 .isEpisodeEnd(true)
                 .isGameEnd(true) // 이 플래그 덕분에 프론트엔드가 엔딩 화면으로 인식함
                 .episodeEnding(storyMapper.toEpisodeEndingDto(lastEpisodeEnding))
