@@ -253,6 +253,7 @@ public class SequentialGenerationService {
                     .genre(storyCreation.getGenre())
                     .description(storyCreation.getDescription())
                     .storyFileKey(storyCreation.getS3FileKey())
+                    .thumbnailFileKey(storyCreation.getThumbnailFileKey())  // Copy thumbnail fileKey
                     .totalEpisodes(episodeRepository.findByStoryAndOrder(storyCreation, totalEpisodes).map(e -> e.getOrder()).orElse(0))
                     .totalNodes((int) storyNodeRepository.countByEpisode_Story(storyCreation))
                     .build();
