@@ -41,6 +41,9 @@ public class StoryCreation {
     @Column(name = "analysis_result_file_key", length = 500)
     private String analysisResultFileKey;  // S3에 저장된 분석 결과 파일의 키 (선택사항)
 
+    @Column(name = "thumbnail_file_key", length = 500)
+    private String thumbnailFileKey;  // S3에 저장된 썸네일 이미지의 키 (선택사항)
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     @Builder.Default
