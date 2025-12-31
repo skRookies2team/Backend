@@ -37,6 +37,7 @@ public class Like {
 
     public enum TargetType {
         POST,
-        COMMENT
+        COMMENT,
+        STORY
     }
 }

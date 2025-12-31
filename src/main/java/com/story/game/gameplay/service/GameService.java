@@ -800,10 +800,16 @@ public class GameService {
         return stories;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public FullStoryDto getStoryDataById(Long storyDataId) {
         StoryData storyData = storyDataRepository.findById(storyDataId)
                 .orElseThrow(() -> new RuntimeException("Story data not found: " + storyDataId));
+
+        // 조회수 증가
+        storyData.incrementViewCount();
+        storyDataRepository.save(storyData);
+        log.info("Story view count incremented: storyDataId={}, viewCount={}", storyDataId, storyData.getViewCount());
+
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
                 .orElseThrow(() -> new RuntimeException("StoryCreation not found"));
         return storyMapper.buildFullStoryDtoFromDb(storyCreation);

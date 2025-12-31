@@ -57,4 +57,28 @@ public class StoryData {
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    /**
+     * 조회수 증가
+     */
+    public void incrementViewCount() {
+        this.viewCount = (this.viewCount == null ? 0L : this.viewCount) + 1;
+    }
+
+    /**
+     * 좋아요 수 증가
+     */
+    public void incrementLikesCount() {
+        this.likesCount = (this.likesCount == null ? 0L : this.likesCount) + 1;
+    }
+
+    /**
+     * 좋아요 수 감소
+     */
+    public void decrementLikesCount() {
+        this.likesCount = (this.likesCount == null ? 0L : this.likesCount) - 1;
+        if (this.likesCount < 0) {
+            this.likesCount = 0L;
+        }
+    }
 }
