@@ -17,17 +17,19 @@ public class GameHistoryDto {
     private String sessionId;
     private Long storyDataId;
     private String storyTitle;
+    private String thumbnailUrl;
     private Boolean isCompleted;
     private String finalEndingId;
     private Map<String, Integer> gaugeStates;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public static GameHistoryDto from(GameSession session, String storyTitle) {
+    public static GameHistoryDto from(GameSession session, String storyTitle, String thumbnailUrl) {
         return GameHistoryDto.builder()
                 .sessionId(session.getId())
                 .storyDataId(session.getStoryDataId())
                 .storyTitle(storyTitle)
+                .thumbnailUrl(thumbnailUrl)
                 .isCompleted(session.getIsCompleted())
                 .finalEndingId(session.getFinalEndingId())
                 .gaugeStates(session.getGaugeStates())

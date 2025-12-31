@@ -1,6 +1,7 @@
 package com.story.game.user.controller;
 
 import com.story.game.achievement.dto.AchievementDto;
+import com.story.game.user.dto.CreatedStoryDto;
 import com.story.game.user.dto.GameHistoryDto;
 import com.story.game.user.dto.ProfileImageUploadResponseDto;
 import com.story.game.user.dto.UpdateProfileRequestDto;
@@ -58,6 +59,12 @@ public class UserController {
     @Operation(summary = "업적 조회", description = "사용자의 업적 달성 현황을 조회합니다")
     public ResponseEntity<List<AchievementDto>> getAchievements(@AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(userService.getUserAchievements(userDetails.getUsername()));
+    }
+
+    @GetMapping("/me/created-stories")
+    @Operation(summary = "작성한 스토리 조회", description = "사용자가 작성한 스토리 목록을 조회합니다. 최신순으로 정렬됩니다.")
+    public ResponseEntity<List<CreatedStoryDto>> getCreatedStories(@AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(userService.getCreatedStories(userDetails.getUsername()));
     }
 
     @GetMapping("/{username}")

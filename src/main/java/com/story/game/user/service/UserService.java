@@ -8,9 +8,11 @@ import com.story.game.gameplay.entity.GameSession;
 import com.story.game.common.entity.StoryData;
 import com.story.game.auth.entity.User;
 import com.story.game.achievement.entity.UserAchievement;
+import com.story.game.creation.entity.StoryCreation;
 import com.story.game.gameplay.repository.GameSessionRepository;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.creation.repository.StoryCreationRepository;
 import com.story.game.common.exception.ExternalServiceException;
 import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
@@ -34,6 +36,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final GameSessionRepository gameSessionRepository;
     private final StoryDataRepository storyDataRepository;
+    private final StoryCreationRepository storyCreationRepository;
     private final AchievementService achievementService;
     private final PasswordEncoder passwordEncoder;
     private final S3Service s3Service;
@@ -76,8 +79,20 @@ public class UserService {
                 .map(session -> {
                     StoryData storyData = storyDataRepository.findById(session.getStoryDataId())
                             .orElse(null);
+
                     String storyTitle = storyData != null ? storyData.getTitle() : "Unknown";
-                    return GameHistoryDto.from(session, storyTitle);
+
+                    // Generate thumbnail URL if available
+                    String thumbnailUrl = null;
+                    if (storyData != null && storyData.getThumbnailFileKey() != null && !storyData.getThumbnailFileKey().isBlank()) {
+                        try {
+                            thumbnailUrl = s3Service.generatePresignedDownloadUrl(storyData.getThumbnailFileKey());
+                        } catch (Exception e) {
+                            log.warn("Failed to generate thumbnail URL for story {}: {}", storyData.getId(), e.getMessage());
+                        }
+                    }
+
+                    return GameHistoryDto.from(session, storyTitle, thumbnailUrl);
                 })
                 .collect(Collectors.toList());
     }
@@ -206,5 +221,43 @@ public class UserService {
         }
 
         return fileKey;
+    }
+
+    /**
+     * 사용자가 작성한 스토리 목록 조회
+     */
+    @Transactional(readOnly = true)
+    public List<CreatedStoryDto> getCreatedStories(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        List<StoryCreation> storyCreations = storyCreationRepository.findByUserOrderByCreatedAtDesc(user);
+
+        return storyCreations.stream()
+                .map(storyCreation -> {
+                    // Generate thumbnail URL if available
+                    String thumbnailUrl = null;
+                    if (storyCreation.getThumbnailFileKey() != null && !storyCreation.getThumbnailFileKey().isBlank()) {
+                        try {
+                            thumbnailUrl = s3Service.generatePresignedDownloadUrl(storyCreation.getThumbnailFileKey());
+                        } catch (Exception e) {
+                            log.warn("Failed to generate thumbnail URL for story {}: {}", storyCreation.getId(), e.getMessage());
+                        }
+                    }
+
+                    // Get likes count and view count from StoryData if story is completed
+                    Long likesCount = 0L;
+                    Long viewCount = 0L;
+                    if (storyCreation.getStoryDataId() != null) {
+                        StoryData storyData = storyDataRepository.findById(storyCreation.getStoryDataId()).orElse(null);
+                        if (storyData != null) {
+                            likesCount = storyData.getLikesCount() != null ? storyData.getLikesCount() : 0L;
+                            viewCount = storyData.getViewCount() != null ? storyData.getViewCount() : 0L;
+                        }
+                    }
+
+                    return CreatedStoryDto.from(storyCreation, thumbnailUrl, likesCount, viewCount);
+                })
+                .collect(Collectors.toList());
     }
 }

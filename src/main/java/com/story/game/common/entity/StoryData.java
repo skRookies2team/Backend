@@ -45,6 +45,15 @@ public class StoryData {
     @Column(name = "thumbnail_file_key", length = 500)
     private String thumbnailFileKey;
 
+    // Stats
+    @Column(name = "likes_count")
+    @Builder.Default
+    private Long likesCount = 0L;
+
+    @Column(name = "view_count")
+    @Builder.Default
+    private Long viewCount = 0L;
+
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
