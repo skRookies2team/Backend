@@ -369,4 +369,46 @@ public class StoryManagementController {
         log.info("Story deleted successfully: {}", storyId);
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * 썸네일 조회
+     */
+    @GetMapping("/{storyId}/thumbnail")
+    @Operation(
+            summary = "썸네일 조회",
+            description = "스토리의 썸네일을 조회합니다. AI가 자동 생성했거나 사용자가 직접 업로드한 썸네일이 있으면 URL을 반환합니다."
+    )
+    public ResponseEntity<ThumbnailResponseDto> getThumbnail(@PathVariable String storyId) {
+        log.info("=== Get Thumbnail Request ===");
+        log.info("StoryId: {}", storyId);
+
+        ThumbnailResponseDto response = storyManagementService.getThumbnail(storyId);
+
+        log.info("Thumbnail retrieved for story: {}", storyId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 사용자가 직접 썸네일 업로드/교체
+     */
+    @PutMapping("/{storyId}/thumbnail")
+    @Operation(
+            summary = "썸네일 업로드/교체",
+            description = "AI 생성 실패 시 또는 사용자가 원하는 이미지로 썸네일을 교체합니다. " +
+                    "프론트엔드는 먼저 /api/upload/presigned-url로 presigned URL을 받아 S3에 파일을 업로드한 후, " +
+                    "이 엔드포인트로 fileKey를 전달하여 썸네일을 등록합니다."
+    )
+    public ResponseEntity<ThumbnailUploadResponseDto> uploadThumbnail(
+            @PathVariable String storyId,
+            @Valid @RequestBody ThumbnailUploadRequestDto request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        log.info("=== Upload Thumbnail Request ===");
+        log.info("StoryId: {}, ThumbnailFileKey: {}, User: {}", storyId, request.getThumbnailFileKey(), userDetails != null ? userDetails.getUsername() : "anonymous");
+
+        com.story.game.auth.entity.User user = (com.story.game.auth.entity.User) userDetails;
+        ThumbnailUploadResponseDto response = storyManagementService.uploadThumbnail(storyId, request, user);
+
+        log.info("Thumbnail uploaded successfully for story: {}", storyId);
+        return ResponseEntity.ok(response);
+    }
 }

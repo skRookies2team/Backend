@@ -90,6 +90,12 @@ public class StoryManagementService {
                     .thumbnail_s3_key(thumbnailFileKey)  // 추가
                     .build();
 
+            // 디버깅 로그 추가
+            log.info("📋 Thumbnail request details:");
+            log.info("   thumbnail_s3_url: {}", thumbnailS3Url != null ? "SET (length: " + thumbnailS3Url.length() + ")" : "NULL");
+            log.info("   thumbnail_s3_bucket: {}", bucketName);
+            log.info("   thumbnail_s3_key: {}", thumbnailFileKey);
+
             // Synchronous call to learn style and generate thumbnail
             com.story.game.ai.dto.NovelStyleLearnResponseDto learnResponse = relayServerClient.learnNovelStyle(learnRequest);
             if (learnResponse != null && learnResponse.getThumbnail_image_url() != null) {
@@ -949,23 +955,44 @@ public class StoryManagementService {
 
             log.info("AI analysis from S3 completed for story: {}", storyId);
 
-            // Learn novel style for image generation (non-blocking, failure is non-critical)
+            // Learn novel style for image generation and generate thumbnail (non-blocking, failure is non-critical)
             try {
-                String novelTextForStyle = s3Service.downloadFileContent(fileKey);
+                // Generate presigned URL for thumbnail upload
+                String thumbnailFileKey = "thumbnails/" + storyId + "/thumbnail.png";
+                String thumbnailS3Url = s3Service.generatePresignedUploadUrl(thumbnailFileKey).getUrl();
+                log.info("Generated presigned URL for thumbnail upload: {}", thumbnailFileKey);
+
+                // Build request with S3 info (AI-IMAGE will download from S3)
                 NovelStyleLearnRequestDto styleRequest = NovelStyleLearnRequestDto.builder()
                         .story_id(storyId)
-                        .novel_text(novelTextForStyle)
                         .title(storyCreation.getTitle())
+                        .novel_s3_bucket(bucketName)
+                        .novel_s3_key(fileKey)
+                        .thumbnail_s3_url(thumbnailS3Url)
+                        .thumbnail_s3_bucket(bucketName)
+                        .thumbnail_s3_key(thumbnailFileKey)
                         .build();
 
+                log.info("📋 Thumbnail request details (S3 mode):");
+                log.info("   novel_s3_bucket: {}", bucketName);
+                log.info("   novel_s3_key: {}", fileKey);
+                log.info("   thumbnail_s3_url: {}", thumbnailS3Url != null ? "SET (length: " + thumbnailS3Url.length() + ")" : "NULL");
+                log.info("   thumbnail_s3_bucket: {}", bucketName);
+                log.info("   thumbnail_s3_key: {}", thumbnailFileKey);
+
                 com.story.game.ai.dto.NovelStyleLearnResponseDto styleResult = relayServerClient.learnNovelStyle(styleRequest);
-                if (styleResult != null) {
-                    log.info("Novel style learned successfully for story: {}", storyId);
+                if (styleResult != null && styleResult.getThumbnail_image_url() != null) {
+                    log.info("✅ Novel style learned successfully with thumbnail for story: {}", storyId);
+
+                    // Save thumbnail file key to DB
+                    storyCreation.setThumbnailFileKey(thumbnailFileKey);
+                    storyCreationRepository.save(storyCreation);
+                    log.info("✅ Saved thumbnail fileKey to DB: {}", thumbnailFileKey);
                 } else {
-                    log.warn("Novel style learning failed for story: {} (non-critical)", storyId);
+                    log.warn("Novel style learning succeeded but no thumbnail generated for story: {} (non-critical)", storyId);
                 }
             } catch (Exception e) {
-                log.warn("Failed to learn novel style (non-critical): {}", e.getMessage());
+                log.warn("Failed to learn novel style or generate thumbnail (non-critical): {}", e.getMessage());
             }
 
         } catch (Exception e) {
@@ -1093,5 +1120,71 @@ public class StoryManagementService {
         } catch (Exception e) {
             log.warn("Failed to delete {} from S3: {} (continuing anyway)", fileType, fileKey, e);
         }
+    }
+
+    /**
+     * 썸네일 조회
+     */
+    @Transactional(readOnly = true)
+    public ThumbnailResponseDto getThumbnail(String storyId) {
+        log.info("=== Get Thumbnail ===");
+        log.info("StoryId: {}", storyId);
+
+        StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                .orElseThrow(() -> new com.story.game.common.exception.ResourceNotFoundException("Story not found: " + storyId));
+
+        String thumbnailUrl = null;
+        boolean hasAiGenerated = false;
+
+        if (storyCreation.getThumbnailFileKey() != null && !storyCreation.getThumbnailFileKey().isBlank()) {
+            try {
+                thumbnailUrl = s3Service.generatePresignedDownloadUrl(storyCreation.getThumbnailFileKey());
+                hasAiGenerated = true;  // 썸네일이 있으면 AI 생성 또는 사용자 업로드로 간주
+                log.info("Generated thumbnail URL for story: {}", storyId);
+            } catch (Exception e) {
+                log.warn("Failed to generate thumbnail URL for story {}: {}", storyId, e.getMessage());
+            }
+        } else {
+            log.info("No thumbnail available for story: {}", storyId);
+        }
+
+        return ThumbnailResponseDto.builder()
+                .thumbnailUrl(thumbnailUrl)
+                .hasAiGenerated(hasAiGenerated)
+                .build();
+    }
+
+    /**
+     * 사용자가 직접 업로드한 썸네일로 교체
+     * AI 생성 실패 또는 사용자가 원하는 이미지로 변경할 때 사용
+     */
+    @Transactional
+    public ThumbnailUploadResponseDto uploadThumbnail(String storyId, ThumbnailUploadRequestDto request, com.story.game.auth.entity.User user) {
+        log.info("=== Upload Custom Thumbnail ===");
+        log.info("StoryId: {}, ThumbnailFileKey: {}, User: {}", storyId, request.getThumbnailFileKey(), user.getUsername());
+
+        // Find story
+        StoryCreation storyCreation = storyCreationRepository.findById(storyId)
+                .orElseThrow(() -> new com.story.game.common.exception.ResourceNotFoundException("Story not found: " + storyId));
+
+        // Authorization check
+        if (storyCreation.getUser() == null || !storyCreation.getUser().getId().equals(user.getId())) {
+            throw new com.story.game.common.exception.UnauthorizedException("Unauthorized: Not the story owner");
+        }
+
+        // Update thumbnail file key
+        String oldThumbnailFileKey = storyCreation.getThumbnailFileKey();
+        storyCreation.setThumbnailFileKey(request.getThumbnailFileKey());
+        storyCreationRepository.save(storyCreation);
+
+        log.info("Updated thumbnail fileKey from {} to {}", oldThumbnailFileKey, request.getThumbnailFileKey());
+
+        // Generate presigned download URL
+        String thumbnailUrl = s3Service.generatePresignedDownloadUrl(request.getThumbnailFileKey());
+
+        return ThumbnailUploadResponseDto.builder()
+                .thumbnailUrl(thumbnailUrl)
+                .message("Thumbnail uploaded successfully")
+                .build();
     }
 }
