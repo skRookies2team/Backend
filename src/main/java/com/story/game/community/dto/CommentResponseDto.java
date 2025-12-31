@@ -17,6 +17,7 @@ public class CommentResponseDto {
     private Long commentId;
     private String authorUsername;
     private String authorNickname;
+    private String authorProfileImageUrl;
     private String content;
     private Long parentId;
     private Integer likeCount;
@@ -30,6 +31,7 @@ public class CommentResponseDto {
                 .commentId(comment.getId())
                 .authorUsername(comment.getAuthor().getUsername())
                 .authorNickname(comment.getAuthor().getNickname())
+                .authorProfileImageUrl(comment.getAuthor().getProfileImageUrl())
                 .content(comment.getContent())
                 .parentId(comment.getParent() != null ? comment.getParent().getId() : null)
                 .likeCount(comment.getLikeCount())

@@ -16,6 +16,7 @@ public class ReviewResponseDto {
     private Long reviewId;
     private String authorUsername;
     private String authorNickname;
+    private String authorProfileImageUrl;
     private Long storyDataId;
     private Integer rating;
     private String content;
@@ -28,6 +29,7 @@ public class ReviewResponseDto {
                 .reviewId(review.getId())
                 .authorUsername(review.getAuthor().getUsername())
                 .authorNickname(review.getAuthor().getNickname())
+                .authorProfileImageUrl(review.getAuthor().getProfileImageUrl())
                 .storyDataId(review.getStoryDataId())
                 .rating(review.getRating())
                 .content(review.getContent())

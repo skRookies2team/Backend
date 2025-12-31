@@ -18,6 +18,7 @@ public class PostResponseDto {
     private Long postId;
     private String authorUsername;
     private String authorNickname;
+    private String authorProfileImageUrl;
     private String title;
     private String content;
     private String type;
@@ -40,6 +41,7 @@ public class PostResponseDto {
                 .postId(post.getId())
                 .authorUsername(post.getAuthor().getUsername())
                 .authorNickname(post.getAuthor().getNickname())
+                .authorProfileImageUrl(post.getAuthor().getProfileImageUrl())
                 .title(post.getTitle())
                 .content(post.getContent())
                 .type(post.getType().name())
