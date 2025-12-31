@@ -318,6 +318,7 @@ public class SequentialGenerationService {
         public int numEpisodes;
         public int maxDepth;
         public List<String> selectedGaugeIds;
+        public Map<String, Integer> endingConfig;
     }
 
     private GenerateNextEpisodeRequest prepareAiRequest(StoryCreation storyCreation, int episodeOrder, EpisodeDto previousEpisode) throws IOException {
@@ -329,6 +330,22 @@ public class SequentialGenerationService {
         if (storyCreation.getSelectedGaugeIdsJson() != null && !storyCreation.getSelectedGaugeIdsJson().isBlank()) {
             selectedGauges = objectMapper.readValue(storyCreation.getSelectedGaugeIdsJson(), new TypeReference<>() {});
         }
+
+        // Read endingConfig from JSON
+        Map<String, Integer> endingConfig = new java.util.HashMap<>();
+        if (storyCreation.getEndingConfigJson() != null && !storyCreation.getEndingConfigJson().isBlank()) {
+            endingConfig = objectMapper.readValue(storyCreation.getEndingConfigJson(), new TypeReference<>() {});
+            log.info("Loaded ending config from DB: {}", endingConfig);
+        } else {
+            // Default ending config if not set
+            endingConfig.put("happy", 2);
+            endingConfig.put("tragic", 1);
+            endingConfig.put("neutral", 1);
+            endingConfig.put("open", 1);
+            endingConfig.put("bad", 0);
+            log.warn("No ending config found, using default: {}", endingConfig);
+        }
+
         InitialAnalysis initialAnalysis = InitialAnalysis.builder()
                 .summary(storyCreation.getSummary())
                 .characters(characters)
@@ -337,6 +354,7 @@ public class SequentialGenerationService {
                 .numEpisodes(storyCreation.getNumEpisodes())
                 .maxDepth(storyCreation.getMaxDepth())
                 .selectedGaugeIds(selectedGauges)
+                .endingConfig(endingConfig)
                 .build();
         return GenerateNextEpisodeRequest.builder()
                 .initialAnalysis(initialAnalysis)

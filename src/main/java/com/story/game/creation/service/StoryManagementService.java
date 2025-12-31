@@ -706,6 +706,13 @@ public class StoryManagementService {
             storyCreation.setNumEpisodes(request.getNumEpisodes());
             storyCreation.setMaxDepth(request.getMaxDepth());
             storyCreation.setNumEpisodeEndings(request.getNumEpisodeEndings());
+
+            // Save endingConfig as JSON
+            if (request.getEndingConfig() != null) {
+                storyCreation.setEndingConfigJson(objectMapper.writeValueAsString(request.getEndingConfig()));
+                log.info("Ending config saved: {}", request.getEndingConfig());
+            }
+
             storyCreation.setStatus(StoryCreation.CreationStatus.CONFIGURED);
             storyCreation.setCurrentPhase("CONFIGURED");
             storyCreation.setProgressPercentage(50);
