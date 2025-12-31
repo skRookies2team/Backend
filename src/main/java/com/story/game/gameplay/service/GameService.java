@@ -80,6 +80,12 @@ public class GameService {
     public GameStateResponseDto startGame(Long storyDataId, com.story.game.auth.entity.User user) {
         StoryData storyData = storyDataRepository.findById(storyDataId)
                 .orElseThrow(() -> new RuntimeException("Story not found: " + storyDataId));
+
+        // 조회수 증가
+        storyData.incrementViewCount();
+        storyDataRepository.save(storyData);
+        log.info("Story view count incremented on game start: storyDataId={}, viewCount={}", storyDataId, storyData.getViewCount());
+
         StoryCreation storyCreation = storyCreationRepository.findByStoryDataId(storyData.getId())
                 .orElseThrow(() -> new RuntimeException("StoryCreation not found for StoryData: " + storyData.getId()));
 
