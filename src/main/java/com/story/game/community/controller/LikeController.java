@@ -1,6 +1,7 @@
 package com.story.game.community.controller;
 
 import com.story.game.auth.entity.User;
+import com.story.game.common.entity.StoryData;
 import com.story.game.community.service.LikeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,6 +11,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -45,5 +47,16 @@ public class LikeController {
         boolean liked = likeService.isStoryLikedByUser(storyDataId, user);
 
         return ResponseEntity.ok(Map.of("liked", liked));
+    }
+
+    @GetMapping("/stories")
+    @Operation(summary = "좋아요한 스토리 목록 조회", description = "사용자가 좋아요 누른 스토리 목록을 조회합니다")
+    public ResponseEntity<List<StoryData>> getLikedStories(
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        User user = (User) userDetails;
+        List<StoryData> stories = likeService.getLikedStories(user);
+
+        return ResponseEntity.ok(stories);
     }
 }

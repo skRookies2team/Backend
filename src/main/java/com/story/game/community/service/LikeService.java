@@ -10,6 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -61,5 +64,18 @@ public class LikeService {
     public boolean isStoryLikedByUser(Long storyDataId, User user) {
         return likeRepository.existsByUserAndTargetTypeAndTargetId(
                 user, Like.TargetType.STORY, storyDataId);
+    }
+
+    /**
+     * 사용자가 좋아요 누른 스토리 목록 조회
+     */
+    @Transactional(readOnly = true)
+    public List<StoryData> getLikedStories(User user) {
+        List<Like> likes = likeRepository.findByUserAndTargetType(user, Like.TargetType.STORY);
+
+        return likes.stream()
+                .map(like -> storyDataRepository.findById(like.getTargetId()).orElse(null))
+                .filter(storyData -> storyData != null)
+                .collect(Collectors.toList());
     }
 }
