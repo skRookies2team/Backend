@@ -25,7 +25,7 @@ public class Achievement {
     private String description; // 업적 설명
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private AchievementType type; // 업적 타입
 
     @Column(nullable = false)
