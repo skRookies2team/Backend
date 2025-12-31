@@ -83,6 +83,15 @@ public class StoryService {
     }
 
     /**
+     * 단일 스토리 조회 (ID 기준)
+     */
+    @Transactional(readOnly = true)
+    public StoryData getStoryById(Long id) {
+        return storyDataRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Story not found: " + id));
+    }
+
+    /**
      * Pageable 생성 헬퍼 메서드
      */
     private Pageable createPageable(int page, int size, String sortBy) {

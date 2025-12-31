@@ -82,4 +82,13 @@ public class StoryController {
         Page<StoryData> stories = storyService.getAllStories(page, size, sortBy);
         return ResponseEntity.ok(stories);
     }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "스토리 상세 조회", description = "특정 스토리의 상세 정보를 조회합니다 (조회수, 좋아요 등 포함)")
+    public ResponseEntity<StoryData> getStoryById(
+            @Parameter(description = "스토리 ID") @PathVariable Long id) {
+
+        StoryData story = storyService.getStoryById(id);
+        return ResponseEntity.ok(story);
+    }
 }
