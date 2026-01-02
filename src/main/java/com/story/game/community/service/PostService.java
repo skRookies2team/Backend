@@ -18,6 +18,7 @@ import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.achievement.service.AchievementService;
 import com.story.game.common.util.XssUtils;
+import com.story.game.common.util.CommunityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -42,6 +43,7 @@ public class PostService {
     private final S3Service s3Service;
     private final FileUploadProperties uploadProperties;
     private final AchievementService achievementService;
+    private final CommunityUtils communityUtils;
 
     @Transactional
     public PostResponseDto createPost(String username, CreatePostRequestDto request) {
@@ -315,10 +317,10 @@ public class PostService {
     }
 
     private boolean isLiked(User user, Long postId) {
-        return likeRepository.existsByUserAndTargetTypeAndTargetId(user, Like.TargetType.POST, postId);
+        return communityUtils.isPostLiked(user, postId);
     }
 
     private boolean isBookmarked(User user, Long postId) {
-        return bookmarkRepository.existsByUserAndTargetTypeAndTargetId(user, Bookmark.TargetType.POST, postId);
+        return communityUtils.isPostBookmarked(user, postId);
     }
 }

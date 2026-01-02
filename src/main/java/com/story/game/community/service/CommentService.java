@@ -11,6 +11,7 @@ import com.story.game.community.repository.LikeRepository;
 import com.story.game.community.repository.PostRepository;
 import com.story.game.auth.repository.UserRepository;
 import com.story.game.common.util.XssUtils;
+import com.story.game.common.util.CommunityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class CommentService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final LikeRepository likeRepository;
+    private final CommunityUtils communityUtils;
 
     @Transactional
     public CommentResponseDto createComment(String username, Long postId, CreateCommentRequestDto request) {
@@ -187,6 +189,6 @@ public class CommentService {
     }
 
     private boolean isLiked(User user, Long commentId) {
-        return likeRepository.existsByUserAndTargetTypeAndTargetId(user, Like.TargetType.COMMENT, commentId);
+        return communityUtils.isCommentLiked(user, commentId);
     }
 }

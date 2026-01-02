@@ -38,5 +38,9 @@ ai-server:
 # Logging
 logging:
   level:
-    com.story.game: DEBUG
-    com.amazonaws: DEBUG
+    com.story.game: INFO  # 개발 시에도 INFO 레벨로 (필요 시 DEBUG로 변경)
+    com.story.game.auth: DEBUG  # 인증/인가는 상세 로깅
+    com.amazonaws: WARN  # AWS SDK는 경고만
+    org.springframework.security: INFO  # Security는 INFO
+    org.hibernate.SQL: DEBUG  # SQL 쿼리 로깅
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # SQL 파라미터 로깅
