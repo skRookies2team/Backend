@@ -1,8 +1,13 @@
 package com.story.game.community.controller;
 
 import com.story.game.common.entity.StoryData;
+import com.story.game.community.dto.LikeStatusResponseDto;
+import com.story.game.community.dto.LikeToggleResponseDto;
 import com.story.game.community.service.LikeService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -11,7 +16,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/likes")
@@ -22,34 +26,58 @@ public class LikeController {
     private final LikeService likeService;
 
     @PostMapping("/stories/{storyDataId}")
-    @Operation(summary = "스토리 좋아요 토글", description = "스토리에 좋아요를 추가하거나 취소합니다")
-    public ResponseEntity<Map<String, Object>> toggleStoryLike(
+    @Operation(
+            summary = "스토리 좋아요 토글",
+            description = "스토리에 좋아요를 추가하거나 취소합니다",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "성공",
+                            content = @Content(schema = @Schema(implementation = LikeToggleResponseDto.class))
+                    )
+            }
+    )
+    public ResponseEntity<LikeToggleResponseDto> toggleStoryLike(
             @PathVariable Long storyDataId,
             @AuthenticationPrincipal UserDetails userDetails) {
 
         String username = userDetails.getUsername();
         boolean liked = likeService.toggleStoryLike(storyDataId, username);
 
-        return ResponseEntity.ok(Map.of(
-                "liked", liked,
-                "message", liked ? "좋아요가 추가되었습니다" : "좋아요가 취소되었습니다",
-                "username", username
-        ));
+        LikeToggleResponseDto response = LikeToggleResponseDto.builder()
+                .liked(liked)
+                .message(liked ? "좋아요가 추가되었습니다" : "좋아요가 취소되었습니다")
+                .username(username)
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/stories/{storyDataId}/status")
-    @Operation(summary = "스토리 좋아요 상태 조회", description = "현재 사용자가 해당 스토리에 좋아요를 눌렀는지 확인합니다")
-    public ResponseEntity<Map<String, Object>> getStoryLikeStatus(
+    @Operation(
+            summary = "스토리 좋아요 상태 조회",
+            description = "현재 사용자가 해당 스토리에 좋아요를 눌렀는지 확인합니다",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "성공",
+                            content = @Content(schema = @Schema(implementation = LikeStatusResponseDto.class))
+                    )
+            }
+    )
+    public ResponseEntity<LikeStatusResponseDto> getStoryLikeStatus(
             @PathVariable Long storyDataId,
             @AuthenticationPrincipal UserDetails userDetails) {
 
         String username = userDetails.getUsername();
         boolean liked = likeService.isStoryLikedByUser(storyDataId, username);
 
-        return ResponseEntity.ok(Map.of(
-                "liked", liked,
-                "username", username
-        ));
+        LikeStatusResponseDto response = LikeStatusResponseDto.builder()
+                .liked(liked)
+                .username(username)
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/stories")
