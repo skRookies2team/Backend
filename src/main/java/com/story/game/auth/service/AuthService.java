@@ -8,6 +8,9 @@ import com.story.game.auth.entity.User;
 import com.story.game.auth.repository.RefreshTokenRepository;
 import com.story.game.auth.repository.UserRepository;
 import com.story.game.auth.security.JwtTokenProvider;
+import com.story.game.common.exception.DuplicateResourceException;
+import com.story.game.common.exception.InvalidInputException;
+import com.story.game.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -38,11 +41,11 @@ public class AuthService {
         // 중복 체크
         if (userRepository.existsByUsername(request.getUsername())) {
             log.warn("Username already exists: {}", request.getUsername());
-            throw new IllegalArgumentException("Username already exists");
+            throw new DuplicateResourceException("User", "username", request.getUsername());
         }
         if (userRepository.existsByEmail(request.getEmail())) {
             log.warn("Email already exists: {}", request.getEmail());
-            throw new IllegalArgumentException("Email already exists");
+            throw new DuplicateResourceException("User", "email", request.getEmail());
         }
 
         // 사용자 생성
@@ -85,7 +88,7 @@ public class AuthService {
         // 1. 토큰 형식 검증
         if (!jwtTokenProvider.validateToken(refreshToken)) {
             log.warn("Invalid refresh token format");
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new InvalidInputException("Invalid refresh token format");
         }
 
         // 2. JWT에서 사용자명 추출
@@ -93,20 +96,20 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("User not found for refresh token: {}", username);
-                    return new IllegalArgumentException("User not found");
+                    return new ResourceNotFoundException("User", "username", username);
                 });
 
         // 3. DB에서 해당 사용자의 리프레시 토큰 조회
         RefreshToken storedToken = refreshTokenRepository.findByUser(user)
                 .orElseThrow(() -> {
                     log.warn("Refresh token not found in database for user: {}", username);
-                    return new IllegalArgumentException("Refresh token not found");
+                    return new InvalidInputException("Refresh token not found or expired");
                 });
 
         // 4. 토큰 해시 비교
         if (!passwordEncoder.matches(refreshToken, storedToken.getToken())) {
             log.warn("Refresh token mismatch for user: {}", username);
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new InvalidInputException("Invalid refresh token");
         }
 
         log.info("Refresh token verified for user: {}", user.getUsername());
@@ -115,7 +118,7 @@ public class AuthService {
         if (storedToken.isExpired()) {
             log.warn("Refresh token expired for user: {}", user.getUsername());
             refreshTokenRepository.delete(storedToken);
-            throw new IllegalArgumentException("Refresh token expired");
+            throw new InvalidInputException("Refresh token expired");
         }
 
         // 6. 새 액세스 토큰만 생성 (리프레시 토큰은 유지!)
@@ -146,7 +149,7 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("User not found for logout: {}", username);
-                    return new IllegalArgumentException("User not found");
+                    return new ResourceNotFoundException("User", "username", username);
                 });
 
         refreshTokenRepository.deleteByUser(user);
