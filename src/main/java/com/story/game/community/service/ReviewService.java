@@ -9,6 +9,7 @@ import com.story.game.auth.repository.UserRepository;
 import com.story.game.common.entity.StoryData;
 import com.story.game.common.exception.ResourceNotFoundException;
 import com.story.game.common.repository.StoryDataRepository;
+import com.story.game.common.util.XssUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,11 +36,14 @@ public class ReviewService {
             throw new IllegalArgumentException("You have already reviewed this story");
         }
 
+        // XSS 필터링 적용
+        String sanitizedContent = XssUtils.sanitize(request.getContent());
+
         StoryReview review = StoryReview.builder()
                 .author(user)
                 .storyDataId(request.getStoryDataId())
                 .rating(request.getRating())
-                .content(request.getContent())
+                .content(sanitizedContent)
                 .build();
 
         reviewRepository.save(review);
@@ -52,7 +56,10 @@ public class ReviewService {
         StoryReview review = getReviewById(reviewId);
         validateAuthor(review, username);
 
-        review.updateReview(request.getRating(), request.getContent());
+        // XSS 필터링 적용
+        String sanitizedContent = XssUtils.sanitize(request.getContent());
+
+        review.updateReview(request.getRating(), sanitizedContent);
         reviewRepository.save(review);
 
         return ReviewResponseDto.from(review);

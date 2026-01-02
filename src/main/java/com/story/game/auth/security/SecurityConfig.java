@@ -2,6 +2,7 @@ package com.story.game.auth.security;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -38,11 +40,8 @@ public class SecurityConfig {
                         // 인증 관련 - 모두 허용
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // 파일 업로드 - 모두 허용
-                        .requestMatchers("/api/upload/**").permitAll()
-
-                        // 스토리 생성 관리 - 모두 허용
-                        .requestMatchers("/api/stories/**").permitAll()
+                        // 스토리 조회만 허용, 생성/수정/삭제는 인증 필요
+                        .requestMatchers(HttpMethod.GET, "/api/stories/**").permitAll()
 
                         // 게임 스토리 조회 - 로그인 없이 가능
                         .requestMatchers(HttpMethod.GET, "/api/game/stories/**").permitAll()
@@ -68,18 +67,14 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) -> {
-                            System.out.println("=== Authentication Failed ===");
-                            System.out.println("Request: " + request.getMethod() + " " + request.getRequestURI());
-                            System.out.println("Reason: " + authException.getMessage());
-                            System.out.println("==============================");
+                            log.warn("Authentication Failed - Request: {} {}, Reason: {}",
+                                    request.getMethod(), request.getRequestURI(), authException.getMessage());
                             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            System.out.println("=== Access Denied (403) ===");
-                            System.out.println("Request: " + request.getMethod() + " " + request.getRequestURI());
-                            System.out.println("Reason: " + accessDeniedException.getMessage());
-                            System.out.println("User: " + request.getUserPrincipal());
-                            System.out.println("===========================");
+                            log.warn("Access Denied - Request: {} {}, User: {}, Reason: {}",
+                                    request.getMethod(), request.getRequestURI(),
+                                    request.getUserPrincipal(), accessDeniedException.getMessage());
                             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access Denied");
                         })
                 )

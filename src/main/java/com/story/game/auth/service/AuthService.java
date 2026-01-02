@@ -88,27 +88,40 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 
-        // 2. DB에서 토큰 확인
-        RefreshToken storedToken = refreshTokenRepository.findByToken(refreshToken)
+        // 2. JWT에서 사용자명 추출
+        String username = jwtTokenProvider.getUsername(refreshToken);
+        User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
-                    log.warn("Refresh token not found in database");
+                    log.warn("User not found for refresh token: {}", username);
+                    return new IllegalArgumentException("User not found");
+                });
+
+        // 3. DB에서 해당 사용자의 리프레시 토큰 조회
+        RefreshToken storedToken = refreshTokenRepository.findByUser(user)
+                .orElseThrow(() -> {
+                    log.warn("Refresh token not found in database for user: {}", username);
                     return new IllegalArgumentException("Refresh token not found");
                 });
 
-        User user = storedToken.getUser();
-        log.info("Refresh token found for user: {}", user.getUsername());
+        // 4. 토큰 해시 비교
+        if (!passwordEncoder.matches(refreshToken, storedToken.getToken())) {
+            log.warn("Refresh token mismatch for user: {}", username);
+            throw new IllegalArgumentException("Invalid refresh token");
+        }
 
-        // 3. 만료 확인
+        log.info("Refresh token verified for user: {}", user.getUsername());
+
+        // 5. 만료 확인
         if (storedToken.isExpired()) {
             log.warn("Refresh token expired for user: {}", user.getUsername());
             refreshTokenRepository.delete(storedToken);
             throw new IllegalArgumentException("Refresh token expired");
         }
 
-        // 4. 새 액세스 토큰만 생성 (리프레시 토큰은 유지!)
+        // 6. 새 액세스 토큰만 생성 (리프레시 토큰은 유지!)
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getUsername());
 
-        // 5. 리프레시 토큰 마지막 사용 시간 업데이트
+        // 7. 리프레시 토큰 마지막 사용 시간 업데이트
         storedToken.updateLastUsedAt();
         refreshTokenRepository.save(storedToken);
 
@@ -146,18 +159,21 @@ public class AuthService {
         String accessToken = jwtTokenProvider.createAccessToken(user.getUsername());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getUsername());
 
-        // 리프레시 토큰 저장
+        // 기존 리프레시 토큰 삭제 (새 로그인 시)
+        refreshTokenRepository.deleteByUser(user);
+
+        // 리프레시 토큰을 해시화하여 저장
         LocalDateTime expiryDate = LocalDateTime.now()
                 .plusSeconds(jwtTokenProvider.getRefreshTokenValidity() / 1000);
 
         RefreshToken tokenEntity = RefreshToken.builder()
                 .user(user)
-                .token(refreshToken)
+                .token(passwordEncoder.encode(refreshToken))  // BCrypt 해시 저장
                 .expiryDate(expiryDate)
                 .build();
 
         refreshTokenRepository.save(tokenEntity);
-        log.info("✅ Refresh token saved. Valid until: {}", expiryDate);
+        log.info("✅ Refresh token saved (hashed). Valid until: {}", expiryDate);
 
         return TokenResponseDto.builder()
                 .accessToken(accessToken)

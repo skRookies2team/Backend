@@ -17,6 +17,7 @@ import com.story.game.common.exception.ExternalServiceException;
 import com.story.game.infrastructure.config.FileUploadProperties;
 import com.story.game.infrastructure.s3.S3Service;
 import com.story.game.achievement.service.AchievementService;
+import com.story.game.common.util.XssUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -46,10 +47,14 @@ public class PostService {
     public PostResponseDto createPost(String username, CreatePostRequestDto request) {
         User user = getUserByUsername(username);
 
+        // XSS 필터링 적용
+        String sanitizedTitle = XssUtils.sanitize(request.getTitle());
+        String sanitizedContent = XssUtils.sanitize(request.getContent());
+
         Post post = Post.builder()
                 .author(user)
-                .title(request.getTitle())
-                .content(request.getContent())
+                .title(sanitizedTitle)
+                .content(sanitizedContent)
                 .type(request.getType())
                 .build();
 
@@ -72,7 +77,11 @@ public class PostService {
         Post post = getPostById(postId);
         validateAuthor(post, username);
 
-        post.updatePost(request.getTitle(), request.getContent());
+        // XSS 필터링 적용
+        String sanitizedTitle = XssUtils.sanitize(request.getTitle());
+        String sanitizedContent = XssUtils.sanitize(request.getContent());
+
+        post.updatePost(sanitizedTitle, sanitizedContent);
         postRepository.save(post);
 
         User user = getUserByUsername(username);

@@ -10,6 +10,7 @@ import com.story.game.community.repository.CommentRepository;
 import com.story.game.community.repository.LikeRepository;
 import com.story.game.community.repository.PostRepository;
 import com.story.game.auth.repository.UserRepository;
+import com.story.game.common.util.XssUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,10 +37,13 @@ public class CommentService {
             parent = getCommentById(request.getParentId());
         }
 
+        // XSS 필터링 적용
+        String sanitizedContent = XssUtils.sanitize(request.getContent());
+
         Comment comment = Comment.builder()
                 .post(post)
                 .author(user)
-                .content(request.getContent())
+                .content(sanitizedContent)
                 .parent(parent)
                 .build();
 
@@ -57,7 +61,10 @@ public class CommentService {
         Comment comment = getCommentById(commentId);
         validateAuthor(comment, username);
 
-        comment.updateContent(content);
+        // XSS 필터링 적용
+        String sanitizedContent = XssUtils.sanitize(content);
+
+        comment.updateContent(sanitizedContent);
         commentRepository.save(comment);
 
         User user = getUserByUsername(username);
