@@ -2,6 +2,7 @@ package com.story.game.community.controller;
 
 import com.story.game.community.dto.CommentResponseDto;
 import com.story.game.community.dto.CreateCommentRequestDto;
+import com.story.game.community.dto.UpdateCommentRequestDto;
 import com.story.game.community.service.CommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -48,8 +49,8 @@ public class CommentController {
     public ResponseEntity<CommentResponseDto> updateComment(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Long commentId,
-            @RequestBody String content) {
-        return ResponseEntity.ok(commentService.updateComment(userDetails.getUsername(), commentId, content));
+            @Valid @RequestBody UpdateCommentRequestDto request) {
+        return ResponseEntity.ok(commentService.updateComment(userDetails.getUsername(), commentId, request.getContent()));
     }
 
     @DeleteMapping("/api/comments/{commentId}")

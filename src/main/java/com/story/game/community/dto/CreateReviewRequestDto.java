@@ -3,6 +3,7 @@ package com.story.game.community.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,5 +21,6 @@ public class CreateReviewRequestDto {
     @Max(value = 5, message = "Rating must be at most 5")
     private Integer rating;
 
+    @Size(max = 2000, message = "Review content must be less than 2000 characters")
     private String content;
 }

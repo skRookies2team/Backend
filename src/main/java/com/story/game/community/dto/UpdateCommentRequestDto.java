@@ -9,11 +9,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateCommentRequestDto {
+public class UpdateCommentRequestDto {
 
     @NotBlank(message = "Content is required")
     @Size(max = 1000, message = "Content must be less than 1000 characters")
     private String content;
-
-    private Long parentId; // 대댓글인 경우 부모 댓글 ID
 }

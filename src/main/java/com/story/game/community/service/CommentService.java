@@ -88,7 +88,14 @@ public class CommentService {
     @Transactional(readOnly = true)
     public List<CommentResponseDto> getCommentsByPost(String username, Long postId) {
         Post post = getPostById(postId);
-        List<Comment> topLevelComments = commentRepository.findByPostAndParentIsNullOrderByCreatedAtAsc(post);
+
+        // N+1 최적화: 모든 댓글을 한 번에 JOIN FETCH로 로드
+        List<Comment> allComments = commentRepository.findAllCommentsWithAuthorByPost(post);
+
+        // 댓글을 계층 구조로 변환 (부모-자식 관계)
+        List<Comment> topLevelComments = allComments.stream()
+                .filter(c -> c.getParent() == null)
+                .collect(Collectors.toList());
 
         // 비로그인 사용자는 좋아요 정보 없이 반환
         if (username == null) {
@@ -96,9 +103,9 @@ public class CommentService {
                     .map(comment -> {
                         CommentResponseDto dto = CommentResponseDto.from(comment, false);
 
-                        // 대댓글 로드
-                        List<Comment> replies = commentRepository.findByParentOrderByCreatedAtAsc(comment);
-                        List<CommentResponseDto> replyDtos = replies.stream()
+                        // 메모리에서 대댓글 필터링 (DB 쿼리 없음)
+                        List<CommentResponseDto> replyDtos = allComments.stream()
+                                .filter(c -> c.getParent() != null && c.getParent().getId().equals(comment.getId()))
                                 .map(reply -> CommentResponseDto.from(reply, false))
                                 .collect(Collectors.toList());
 
@@ -106,6 +113,7 @@ public class CommentService {
                                 .commentId(dto.getCommentId())
                                 .authorUsername(dto.getAuthorUsername())
                                 .authorNickname(dto.getAuthorNickname())
+                                .authorProfileImageUrl(dto.getAuthorProfileImageUrl())
                                 .content(dto.getContent())
                                 .parentId(dto.getParentId())
                                 .likeCount(dto.getLikeCount())
@@ -124,9 +132,9 @@ public class CommentService {
                 .map(comment -> {
                     CommentResponseDto dto = CommentResponseDto.from(comment, isLiked(user, comment.getId()));
 
-                    // 대댓글 로드
-                    List<Comment> replies = commentRepository.findByParentOrderByCreatedAtAsc(comment);
-                    List<CommentResponseDto> replyDtos = replies.stream()
+                    // 메모리에서 대댓글 필터링 (DB 쿼리 없음)
+                    List<CommentResponseDto> replyDtos = allComments.stream()
+                            .filter(c -> c.getParent() != null && c.getParent().getId().equals(comment.getId()))
                             .map(reply -> CommentResponseDto.from(reply, isLiked(user, reply.getId())))
                             .collect(Collectors.toList());
 
@@ -134,6 +142,7 @@ public class CommentService {
                             .commentId(dto.getCommentId())
                             .authorUsername(dto.getAuthorUsername())
                             .authorNickname(dto.getAuthorNickname())
+                            .authorProfileImageUrl(dto.getAuthorProfileImageUrl())
                             .content(dto.getContent())
                             .parentId(dto.getParentId())
                             .likeCount(dto.getLikeCount())

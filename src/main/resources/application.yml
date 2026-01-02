@@ -18,6 +18,8 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MariaDBDialect
+        jdbc:
+          time_zone: UTC
 
   flyway:
     enabled: true
@@ -30,6 +32,8 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+    time-zone: UTC
+    date-format: yyyy-MM-dd'T'HH:mm:ss.SSS'Z'
 
   servlet:
     multipart:

@@ -18,6 +18,7 @@ public class CreatePostRequestDto {
     private String title;
 
     @NotBlank(message = "Content is required")
+    @Size(max = 10000, message = "Content must be less than 10000 characters")
     private String content;
 
     @NotNull(message = "Post type is required")

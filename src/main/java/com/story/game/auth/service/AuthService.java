@@ -96,7 +96,7 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("User not found for refresh token: {}", username);
-                    return new ResourceNotFoundException("User", "username", username);
+                    return new ResourceNotFoundException("User not found with username: " + username);
                 });
 
         // 3. DB에서 해당 사용자의 리프레시 토큰 조회
@@ -149,7 +149,7 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("User not found for logout: {}", username);
-                    return new ResourceNotFoundException("User", "username", username);
+                    return new ResourceNotFoundException("User not found with username: " + username);
                 });
 
         refreshTokenRepository.deleteByUser(user);
