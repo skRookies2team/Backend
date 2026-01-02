@@ -1,6 +1,5 @@
 package com.story.game.community.controller;
 
-import com.story.game.auth.entity.User;
 import com.story.game.common.entity.StoryData;
 import com.story.game.community.service.LikeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,25 +27,29 @@ public class LikeController {
             @PathVariable Long storyDataId,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        User user = (User) userDetails;
-        boolean liked = likeService.toggleStoryLike(storyDataId, user);
+        String username = userDetails.getUsername();
+        boolean liked = likeService.toggleStoryLike(storyDataId, username);
 
         return ResponseEntity.ok(Map.of(
                 "liked", liked,
-                "message", liked ? "좋아요가 추가되었습니다" : "좋아요가 취소되었습니다"
+                "message", liked ? "좋아요가 추가되었습니다" : "좋아요가 취소되었습니다",
+                "username", username
         ));
     }
 
     @GetMapping("/stories/{storyDataId}/status")
     @Operation(summary = "스토리 좋아요 상태 조회", description = "현재 사용자가 해당 스토리에 좋아요를 눌렀는지 확인합니다")
-    public ResponseEntity<Map<String, Boolean>> getStoryLikeStatus(
+    public ResponseEntity<Map<String, Object>> getStoryLikeStatus(
             @PathVariable Long storyDataId,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        User user = (User) userDetails;
-        boolean liked = likeService.isStoryLikedByUser(storyDataId, user);
+        String username = userDetails.getUsername();
+        boolean liked = likeService.isStoryLikedByUser(storyDataId, username);
 
-        return ResponseEntity.ok(Map.of("liked", liked));
+        return ResponseEntity.ok(Map.of(
+                "liked", liked,
+                "username", username
+        ));
     }
 
     @GetMapping("/stories")
@@ -54,8 +57,7 @@ public class LikeController {
     public ResponseEntity<List<StoryData>> getLikedStories(
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        User user = (User) userDetails;
-        List<StoryData> stories = likeService.getLikedStories(user);
+        List<StoryData> stories = likeService.getLikedStories(userDetails.getUsername());
 
         return ResponseEntity.ok(stories);
     }

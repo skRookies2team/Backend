@@ -1,6 +1,7 @@
 package com.story.game.community.service;
 
 import com.story.game.auth.entity.User;
+import com.story.game.auth.repository.UserRepository;
 import com.story.game.common.entity.StoryData;
 import com.story.game.common.repository.StoryDataRepository;
 import com.story.game.community.entity.Like;
@@ -20,12 +21,16 @@ public class LikeService {
 
     private final LikeRepository likeRepository;
     private final StoryDataRepository storyDataRepository;
+    private final UserRepository userRepository;
 
     /**
      * 스토리 좋아요 토글 (추가/취소)
      */
     @Transactional
-    public boolean toggleStoryLike(Long storyDataId, User user) {
+    public boolean toggleStoryLike(Long storyDataId, String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+
         StoryData storyData = storyDataRepository.findById(storyDataId)
                 .orElseThrow(() -> new IllegalArgumentException("Story not found: " + storyDataId));
 
@@ -61,7 +66,10 @@ public class LikeService {
      * 사용자가 특정 스토리에 좋아요를 눌렀는지 확인
      */
     @Transactional(readOnly = true)
-    public boolean isStoryLikedByUser(Long storyDataId, User user) {
+    public boolean isStoryLikedByUser(Long storyDataId, String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+
         return likeRepository.existsByUserAndTargetTypeAndTargetId(
                 user, Like.TargetType.STORY, storyDataId);
     }
@@ -70,7 +78,10 @@ public class LikeService {
      * 사용자가 좋아요 누른 스토리 목록 조회
      */
     @Transactional(readOnly = true)
-    public List<StoryData> getLikedStories(User user) {
+    public List<StoryData> getLikedStories(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+
         List<Like> likes = likeRepository.findByUserAndTargetType(user, Like.TargetType.STORY);
 
         return likes.stream()
