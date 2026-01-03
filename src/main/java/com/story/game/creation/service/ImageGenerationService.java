@@ -33,20 +33,10 @@ public class ImageGenerationService {
 
     /**
      * Determine if a node should have an auto-generated image
-     * Rule: Root nodes (depth=0) and ending nodes
+     * Rule: All nodes should have images
      */
     public boolean shouldGenerateImage(StoryNode node) {
-        // Root nodes
-        if (node.getDepth() != null && node.getDepth() == 0) {
-            return true;
-        }
-
-        // Ending nodes (no child choices)
-        if (node.getOutgoingChoices() == null || node.getOutgoingChoices().isEmpty()) {
-            return true;
-        }
-
-        return false;
+        return true;  // 모든 노드에 이미지 생성
     }
 
     /**
@@ -292,18 +282,21 @@ public class ImageGenerationService {
         if (fileKeyOrUrl.startsWith("http://") || fileKeyOrUrl.startsWith("https://")) {
             try {
                 // Pattern: https://bucket.s3.region.amazonaws.com/key
-                // Extract everything after the first "/" following ".amazonaws.com"
-                int amazonIdx = fileKeyOrUrl.indexOf(".amazonaws.com/");
-                if (amazonIdx != -1) {
-                    String extracted = fileKeyOrUrl.substring(amazonIdx + ".amazonaws.com/".length());
+                // Find .s3. first, then find .amazonaws.com/ after that
+                int s3Idx = fileKeyOrUrl.indexOf(".s3.");
+                if (s3Idx != -1) {
+                    int amazonIdx = fileKeyOrUrl.indexOf(".amazonaws.com/", s3Idx);
+                    if (amazonIdx != -1) {
+                        String extracted = fileKeyOrUrl.substring(amazonIdx + ".amazonaws.com/".length());
 
-                    // Remove query parameters if present (presigned URL case)
-                    int queryIdx = extracted.indexOf("?");
-                    if (queryIdx != -1) {
-                        extracted = extracted.substring(0, queryIdx);
+                        // Remove query parameters if present (presigned URL case)
+                        int queryIdx = extracted.indexOf("?");
+                        if (queryIdx != -1) {
+                            extracted = extracted.substring(0, queryIdx);
+                        }
+
+                        return extracted;
                     }
-
-                    return extracted;
                 }
             } catch (Exception e) {
                 log.warn("Failed to extract fileKey from URL: {}", fileKeyOrUrl, e);
