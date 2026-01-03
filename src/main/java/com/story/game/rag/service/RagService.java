@@ -105,35 +105,48 @@ public class RagService {
     public ChatMessageResponseDto sendMessage(String username, ChatMessageRequestDto request) {
         log.info("=== Send Chat Message ===");
         log.info("Username: {}", username);
-        log.info("Character: {}", request.getCharacterId());
+        log.info("Character ID (원본): {}", request.getCharacterId());
         log.info("User message: {}", request.getUserMessage());
+
+        // characterId에서 storyId 추출 (story_39a5d3b1_로미오 → story_39a5d3b1)
+        String characterId = request.getCharacterId();
+        String storyId = characterId;
+
+        if (characterId != null && characterId.startsWith("story_")) {
+            String[] parts = characterId.split("_");
+            if (parts.length >= 3) {
+                // story_39a5d3b1_로미오 → story_39a5d3b1
+                storyId = parts[0] + "_" + parts[1];
+                log.info("CharacterId에서 StoryId 추출: {} → {}", characterId, storyId);
+            }
+        }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        // 람다에서 사용하기 위해 final 변수 생성
+        final String finalStoryId = storyId;
 
         // 대화 내역 조회 또는 생성
         ChatConversation conversation = chatConversationRepository
                 .findByUserAndCharacterId(user, request.getCharacterId())
                 .orElseGet(() -> {
-                    // characterId는 실제로 storyId (StoryManagementService에서 storyId를 characterId로 사용)
-                    String storyId = request.getCharacterId();
-
                     // StoryCreation 조회하여 제목 가져오기
                     String characterName = null;
                     try {
-                        StoryCreation storyCreation = storyCreationRepository.findById(storyId).orElse(null);
+                        StoryCreation storyCreation = storyCreationRepository.findById(finalStoryId).orElse(null);
                         if (storyCreation != null) {
                             characterName = storyCreation.getTitle();
                         }
                     } catch (Exception e) {
-                        log.warn("Failed to fetch story title for characterId: {}", storyId, e);
+                        log.warn("Failed to fetch story title for storyId: {}", finalStoryId, e);
                     }
 
                     ChatConversation newConv = ChatConversation.builder()
                             .user(user)
                             .characterId(request.getCharacterId())
                             .characterName(characterName)
-                            .storyId(storyId)
+                            .storyId(finalStoryId)
                             .build();
                     return chatConversationRepository.save(newConv);
                 });
@@ -154,6 +167,11 @@ public class RagService {
             request.setCharacterName(conversation.getCharacterName());
             log.debug("Set characterName for RAG server: {}", conversation.getCharacterName());
         }
+
+        // StoryId를 별도 필드로 설정 (벡터 스토어 매칭용)
+        request.setStoryId(storyId);
+        log.info("Python RAG 서버로 전송: character_id={}, story_id={}, character_name={}",
+                request.getCharacterId(), storyId, request.getCharacterName());
 
         try {
             ChatMessageResponseDto response = relayServerWebClient.post()

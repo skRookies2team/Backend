@@ -22,6 +22,9 @@ public class ChatMessageRequestDto {
     @Size(max = 100)
     private String characterName;  // 캐릭터 이름 (RAG 서버로 전달)
 
+    @Size(max = 100)
+    private String storyId;  // 스토리 ID (벡터 스토어 매칭용)
+
     @NotBlank(message = "User message is required")
     @Size(max = 2000)
     private String userMessage;
