@@ -689,6 +689,53 @@ public class StoryManagementService {
         }
     }
 
+    /**
+     * 소설 길이에 따라 최적의 에피소드 수를 계산
+     *
+     * 기준:
+     * - ~5만자: 3개 (매우 짧은 소설)
+     * - 5~8만자: 4개
+     * - 8~15만자: 5개 (로미오와 줄리엣 수준)
+     * - 15~30만자: 6개
+     * - 30~50만자: 7개
+     * - 50~80만자: 8개
+     * - 80~100만자: 9개
+     * - 100만자 이상: 10개 (모비딕 수준)
+     *
+     * @param storyCreation 스토리 생성 정보
+     * @return 최적 에피소드 수 (3~10)
+     */
+    private int calculateOptimalEpisodes(StoryCreation storyCreation) {
+        if (storyCreation.getNovelText() == null || storyCreation.getNovelText().isEmpty()) {
+            log.warn("Novel text is empty, using default episode count: 5");
+            return 5;
+        }
+
+        int charCount = storyCreation.getNovelText().length();
+        int episodes;
+
+        if (charCount < 50000) {
+            episodes = 3;
+        } else if (charCount < 80000) {
+            episodes = 4;
+        } else if (charCount < 150000) {
+            episodes = 5;
+        } else if (charCount < 300000) {
+            episodes = 6;
+        } else if (charCount < 500000) {
+            episodes = 7;
+        } else if (charCount < 800000) {
+            episodes = 8;
+        } else if (charCount < 1000000) {
+            episodes = 9;
+        } else {
+            episodes = 10;
+        }
+
+        log.info("Auto-calculated episodes for {} characters: {} episodes", charCount, episodes);
+        return episodes;
+    }
+
     @Transactional
     public StoryConfigResponseDto configureStory(String storyId, StoryConfigRequestDto request) {
         log.info("=== Configure Story ===");
@@ -702,8 +749,19 @@ public class StoryManagementService {
         }
 
         try {
+            // 소설 길이 기반 에피소드 수 자동 계산
+            int novelLength = (storyCreation.getNovelText() != null) ? storyCreation.getNovelText().length() : 0;
+            int calculatedEpisodes = calculateOptimalEpisodes(storyCreation);
+            int finalEpisodes = (request.getNumEpisodes() != null) ? request.getNumEpisodes() : calculatedEpisodes;
+
+            log.info("Novel length: {} chars, Calculated episodes: {}, Final episodes: {}, User override: {}",
+                    novelLength,
+                    calculatedEpisodes,
+                    finalEpisodes,
+                    request.getNumEpisodes() != null);
+
             storyCreation.setDescription(request.getDescription());
-            storyCreation.setNumEpisodes(request.getNumEpisodes());
+            storyCreation.setNumEpisodes(finalEpisodes);
             storyCreation.setMaxDepth(request.getMaxDepth());
             storyCreation.setNumEpisodeEndings(request.getNumEpisodeEndings());
 
@@ -719,7 +777,7 @@ public class StoryManagementService {
             storyCreation.setProgressMessage("Story configured");
 
             storyCreation.setCompletedEpisodes(0);
-            storyCreation.setTotalEpisodesToGenerate(request.getNumEpisodes());
+            storyCreation.setTotalEpisodesToGenerate(finalEpisodes);  // 자동 계산된 값 사용
 
             storyCreation = storyCreationRepository.save(storyCreation);
 
@@ -728,7 +786,7 @@ public class StoryManagementService {
                     .status(storyCreation.getStatus())
                     .config(StoryConfigResponseDto.ConfigData.builder()
                             .description(request.getDescription())
-                            .numEpisodes(request.getNumEpisodes())
+                            .numEpisodes(finalEpisodes)  // 자동 계산된 값 사용
                             .maxDepth(request.getMaxDepth())
                             .numEpisodeEndings(request.getNumEpisodeEndings())
                             .build())
