@@ -744,8 +744,17 @@ public class StoryManagementService {
         StoryCreation storyCreation = storyCreationRepository.findById(storyId)
                 .orElseThrow(() -> new EntityNotFoundException("Story not found: " + storyId));
 
-        if (storyCreation.getStatus() != StoryCreation.CreationStatus.GAUGES_SELECTED) {
-            throw new IllegalStateException("Cannot configure: current status is " + storyCreation.getStatus());
+        // Allow configuration at GAUGES_SELECTED or CONFIGURED (for re-configuration)
+        if (storyCreation.getStatus() != StoryCreation.CreationStatus.GAUGES_SELECTED &&
+            storyCreation.getStatus() != StoryCreation.CreationStatus.CONFIGURED) {
+            throw new IllegalStateException("Cannot configure: current status is " + storyCreation.getStatus() +
+                    ". Configuration is only allowed at GAUGES_SELECTED or CONFIGURED stage.");
+        }
+
+        // Log if this is a re-configuration
+        if (storyCreation.getStatus() == StoryCreation.CreationStatus.CONFIGURED) {
+            log.info("Re-configuring story. Previous episodes: {}, Previous maxDepth: {}",
+                    storyCreation.getNumEpisodes(), storyCreation.getMaxDepth());
         }
 
         try {
