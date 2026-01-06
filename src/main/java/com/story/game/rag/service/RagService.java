@@ -108,16 +108,19 @@ public class RagService {
         log.info("Character ID (원본): {}", request.getCharacterId());
         log.info("User message: {}", request.getUserMessage());
 
-        // characterId에서 storyId 추출 (story_39a5d3b1_로미오 → story_39a5d3b1)
+        // characterId에서 storyId와 캐릭터 이름 추출 (story_39a5d3b1_로미오 → story_39a5d3b1, 로미오)
         String characterId = request.getCharacterId();
         String storyId = characterId;
+        String extractedCharacterName = "캐릭터"; // 기본값
 
         if (characterId != null && characterId.startsWith("story_")) {
             String[] parts = characterId.split("_");
             if (parts.length >= 3) {
                 // story_39a5d3b1_로미오 → story_39a5d3b1
                 storyId = parts[0] + "_" + parts[1];
-                log.info("CharacterId에서 StoryId 추출: {} → {}", characterId, storyId);
+                // story_39a5d3b1_로미오 → 로미오
+                extractedCharacterName = String.join("_", java.util.Arrays.copyOfRange(parts, 2, parts.length));
+                log.info("CharacterId에서 추출: storyId={}, characterName={}", storyId, extractedCharacterName);
             }
         }
 
@@ -126,26 +129,16 @@ public class RagService {
 
         // 람다에서 사용하기 위해 final 변수 생성
         final String finalStoryId = storyId;
+        final String finalCharacterName = extractedCharacterName;
 
         // 대화 내역 조회 또는 생성
         ChatConversation conversation = chatConversationRepository
                 .findByUserAndCharacterId(user, request.getCharacterId())
                 .orElseGet(() -> {
-                    // StoryCreation 조회하여 제목 가져오기
-                    String characterName = null;
-                    try {
-                        StoryCreation storyCreation = storyCreationRepository.findById(finalStoryId).orElse(null);
-                        if (storyCreation != null) {
-                            characterName = storyCreation.getTitle();
-                        }
-                    } catch (Exception e) {
-                        log.warn("Failed to fetch story title for storyId: {}", finalStoryId, e);
-                    }
-
                     ChatConversation newConv = ChatConversation.builder()
                             .user(user)
                             .characterId(request.getCharacterId())
-                            .characterName(characterName)
+                            .characterName(finalCharacterName)
                             .storyId(finalStoryId)
                             .build();
                     return chatConversationRepository.save(newConv);
@@ -163,9 +156,10 @@ public class RagService {
         }
 
         // 캐릭터 이름을 request에 설정 (RAG 서버 연동을 위해 필수)
+        // characterId에서 추출한 이름을 우선 사용 (기존 대화에 잘못 저장된 이름 무시)
         if (request.getCharacterName() == null || request.getCharacterName().isEmpty()) {
-            request.setCharacterName(conversation.getCharacterName());
-            log.debug("Set characterName for RAG server: {}", conversation.getCharacterName());
+            request.setCharacterName(extractedCharacterName);
+            log.info("CharacterId에서 추출한 캐릭터 이름 사용: {}", extractedCharacterName);
         }
 
         // StoryId를 별도 필드로 설정 (벡터 스토어 매칭용)
