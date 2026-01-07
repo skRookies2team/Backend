@@ -68,7 +68,7 @@ public class RelayServerClient {
 
         try {
             ImageGenerationResponseDto response = relayServerWebClient.post()
-                .uri("/ai/generate-image")
+                .uri("/ai-image/generate-image")
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(ImageGenerationResponseDto.class)
