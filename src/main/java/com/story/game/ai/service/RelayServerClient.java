@@ -67,12 +67,26 @@ public class RelayServerClient {
         log.info("Requesting image generation from relay server for node: {}", request.getNodeText());
 
         try {
-            ImageGenerationResponseDto response = relayServerWebClient.post()
+            // AI 이미지 서버 스펙에 맞게 필드명 변환 (snake_case)
+            Map<String, Object> aiImageRequest = new HashMap<>();
+            aiImageRequest.put("story_id", request.getStoryId());
+            aiImageRequest.put("user_prompt", request.getNodeText());
+            if (request.getAdditionalContext() != null) {
+                aiImageRequest.put("context_text", request.getAdditionalContext());
+            }
+            if (request.getNovelS3Bucket() != null) {
+                aiImageRequest.put("s3_bucket", request.getNovelS3Bucket());
+            }
+            if (request.getNovelS3Key() != null) {
+                aiImageRequest.put("s3_key", request.getNovelS3Key());
+            }
+
+            Map<String, Object> response = relayServerWebClient.post()
                 .uri("/ai-image/api/v1/generate-image")
-                .bodyValue(request)
+                .bodyValue(aiImageRequest)
                 .retrieve()
-                .bodyToMono(ImageGenerationResponseDto.class)
-                .timeout(Duration.ofSeconds(30))
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(60))
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.error("Relay server error during image generation: {} - {}",
                         e.getStatusCode(), e.getResponseBodyAsString());
@@ -84,8 +98,12 @@ public class RelayServerClient {
                 throw new RuntimeException("No response from relay server");
             }
 
-            log.info("Image generated successfully: {}", response.getImageUrl());
-            return response;
+            ImageGenerationResponseDto result = ImageGenerationResponseDto.builder()
+                .imageUrl((String) response.get("image_url"))
+                .build();
+
+            log.info("Image generated successfully: {}", result.getImageUrl());
+            return result;
 
         } catch (Exception e) {
             log.error("Failed to generate image: {}", e.getMessage(), e);

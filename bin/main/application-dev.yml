@@ -14,22 +14,33 @@ spring:
     hibernate:
       ddl-auto: update
 
+  flyway:
+    enabled: true
+    baseline-on-migrate: true  # 기존 DB에 baseline 설정
+    baseline-version: 6  # 현재 DB 버전
+    validate-on-migrate: false  # 검증 오류 무시
+
 # AWS S3 설정 (개발용)
 # 환경 변수로 설정하세요: AWS_S3_BUCKET, AWS_ACCESS_KEY, AWS_SECRET_KEY
 aws:
   s3:
     bucket: ${AWS_S3_BUCKET:story-game-dev}
     region: ${AWS_S3_REGION:ap-northeast-2}
+    endpoint: ${AWS_S3_ENDPOINT:}  # LocalStack 사용 시: http://localhost:4566
   credentials:
     access-key: ${AWS_ACCESS_KEY}
     secret-key: ${AWS_SECRET_KEY}
 
 # AI 서버
 ai-server:
-  url: http://localhost:8000
+  url: ${AI_SERVER_URL:http://localhost:8000}
 
 # Logging
 logging:
   level:
-    com.story.game: DEBUG
-    com.amazonaws: DEBUG
+    com.story.game: INFO  # 개발 시에도 INFO 레벨로 (필요 시 DEBUG로 변경)
+    com.story.game.auth: DEBUG  # 인증/인가는 상세 로깅
+    com.amazonaws: WARN  # AWS SDK는 경고만
+    org.springframework.security: INFO  # Security는 INFO
+    org.hibernate.SQL: DEBUG  # SQL 쿼리 로깅
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # SQL 파라미터 로깅
