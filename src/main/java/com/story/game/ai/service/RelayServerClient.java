@@ -35,7 +35,7 @@ public class RelayServerClient {
 
         try {
             NovelStyleLearnResponseDto response = relayServerWebClient.post()
-                .uri("/ai/learn-novel-style")
+                .uri("/ai-image/api/v1/learn-style")
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(NovelStyleLearnResponseDto.class)
