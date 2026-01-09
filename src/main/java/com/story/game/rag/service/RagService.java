@@ -42,7 +42,7 @@ public class RagService {
 
         try {
             Boolean result = relayServerWebClient.post()
-                    .uri("/ai-npc/chat/index-novel")
+                    .uri("/ai-npc/api/ai/train-from-s3")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Boolean.class)
@@ -75,7 +75,7 @@ public class RagService {
 
         try {
             Boolean result = relayServerWebClient.post()
-                    .uri("/ai/chat/index-character")
+                    .uri("/ai-npc/api/ai/character")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Boolean.class)
@@ -169,7 +169,7 @@ public class RagService {
 
         try {
             ChatMessageResponseDto response = relayServerWebClient.post()
-                    .uri("/ai/chat/message")
+                    .uri("/ai-npc/api/ai/chat")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(ChatMessageResponseDto.class)
@@ -361,7 +361,7 @@ public class RagService {
         try {
             Boolean result = relayServerWebClient.delete()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/ai/chat/story/{storyId}")
+                            .path("/ai-npc/api/ai/session/{storyId}")
                             .build(storyId))
                     .retrieve()
                     .bodyToMono(Boolean.class)
@@ -393,7 +393,7 @@ public class RagService {
 
         try {
             Boolean result = relayServerWebClient.post()
-                    .uri("/ai/chat/update-progress")
+                    .uri("/ai-npc/api/ai/update")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Boolean.class)
@@ -426,7 +426,7 @@ public class RagService {
 
         try {
             Boolean result = relayServerWebClient.post()
-                    .uri("/ai/chat/set-character")
+                    .uri("/ai-npc/api/ai/character")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Boolean.class)
