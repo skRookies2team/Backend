@@ -83,7 +83,7 @@ public class RagService {
         try {
             // AI-NPC 서버 스펙에 맞게 변환
             Map<String, Object> aiNpcRequest = new HashMap<>();
-            aiNpcRequest.put("story_id", request.getStoryId());
+            aiNpcRequest.put("character_id", request.getCharacterId());
             aiNpcRequest.put("character_name", request.getName());
             aiNpcRequest.put("character_description", request.getDescription());
 
@@ -421,7 +421,7 @@ public class RagService {
             // AI-NPC 서버 스펙에 맞게 변환
             Map<String, Object> aiNpcRequest = new HashMap<>();
             aiNpcRequest.put("session_id", request.getCharacterId());
-            aiNpcRequest.put("current_node", request.getCurrentNodeId());
+            aiNpcRequest.put("content", request.getContent());
 
             Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/update")
@@ -458,7 +458,7 @@ public class RagService {
         try {
             // AI-NPC 서버 스펙에 맞게 변환
             Map<String, Object> aiNpcRequest = new HashMap<>();
-            aiNpcRequest.put("story_id", request.getStoryId());
+            aiNpcRequest.put("character_id", request.getCharacterId());
             aiNpcRequest.put("character_name", request.getCharacterName());
             aiNpcRequest.put("character_description", request.getCharacterDescription());
 
