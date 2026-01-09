@@ -77,9 +77,9 @@ public class RelayServerClient {
             if (request.getNovelS3Bucket() != null) {
                 aiImageRequest.put("s3_bucket", request.getNovelS3Bucket());
             }
-            if (request.getNovelS3Key() != null) {
-                aiImageRequest.put("s3_key", request.getNovelS3Key());
-            }
+            // 이미지 업로드용 S3 키 생성 (소설 키가 아닌 이미지용 경로)
+            String imageS3Key = "story-images/" + request.getStoryId() + "/" + System.currentTimeMillis() + ".png";
+            aiImageRequest.put("s3_key", imageS3Key);
 
             Map<String, Object> response = relayServerWebClient.post()
                 .uri("/ai-image/api/v1/generate-image")
