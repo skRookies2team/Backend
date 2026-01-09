@@ -131,7 +131,7 @@ public class RelayServerClient {
             request.put("prompt", prompt);
 
             Map<String, Object> response = relayServerWebClient.post()
-                .uri("/ai/recommend-music")
+                .uri("/ai-bgm/api/analyze")
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(Map.class)
