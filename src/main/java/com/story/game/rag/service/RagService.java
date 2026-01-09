@@ -17,7 +17,9 @@ import org.springframework.web.reactive.function.client.WebClientRequestExceptio
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,15 +43,20 @@ public class RagService {
         log.info("File key: {}", request.getFileKey());
 
         try {
-            Boolean result = relayServerWebClient.post()
+            // AI-NPC 서버 스펙에 맞게 변환
+            Map<String, Object> aiNpcRequest = new HashMap<>();
+            aiNpcRequest.put("story_id", request.getStoryId());
+            aiNpcRequest.put("s3_key", request.getFileKey());
+
+            Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/train-from-s3")
-                    .bodyValue(request)
+                    .bodyValue(aiNpcRequest)
                     .retrieve()
-                    .bodyToMono(Boolean.class)
+                    .bodyToMono(Map.class)
                     .block();
 
             log.info("Novel indexing result: {}", result);
-            return result != null && result;
+            return result != null;
 
         } catch (WebClientResponseException e) {
             log.warn("RAG server returned error while indexing novel (non-critical): {} - Status: {}, Body: {}",
@@ -74,15 +81,21 @@ public class RagService {
         log.info("Character: {} ({})", request.getName(), request.getCharacterId());
 
         try {
-            Boolean result = relayServerWebClient.post()
+            // AI-NPC 서버 스펙에 맞게 변환
+            Map<String, Object> aiNpcRequest = new HashMap<>();
+            aiNpcRequest.put("story_id", request.getStoryId());
+            aiNpcRequest.put("character_name", request.getName());
+            aiNpcRequest.put("character_description", request.getDescription());
+
+            Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/character")
-                    .bodyValue(request)
+                    .bodyValue(aiNpcRequest)
                     .retrieve()
-                    .bodyToMono(Boolean.class)
+                    .bodyToMono(Map.class)
                     .block();
 
             log.info("Character indexing result: {}", result);
-            return result != null && result;
+            return result != null;
 
         } catch (WebClientResponseException e) {
             log.warn("Relay server returned error while indexing character (non-critical): {} - Status: {}, Body: {}",
@@ -168,15 +181,24 @@ public class RagService {
                 request.getCharacterId(), storyId, request.getCharacterName());
 
         try {
-            ChatMessageResponseDto response = relayServerWebClient.post()
+            // AI-NPC 서버 스펙에 맞게 필드명 변환
+            Map<String, Object> aiNpcRequest = new HashMap<>();
+            aiNpcRequest.put("session_id", request.getCharacterId());
+            aiNpcRequest.put("character_name", request.getCharacterName());
+            aiNpcRequest.put("message", request.getUserMessage());
+
+            log.info("AI-NPC 서버로 전송: {}", aiNpcRequest);
+
+            Map<String, Object> responseMap = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/chat")
-                    .bodyValue(request)
+                    .bodyValue(aiNpcRequest)
                     .retrieve()
-                    .bodyToMono(ChatMessageResponseDto.class)
+                    .bodyToMono(Map.class)
                     .block();
 
-            if (response != null) {
-                log.info("AI response: {}", response.getAiMessage());
+            if (responseMap != null) {
+                String aiMessage = (String) responseMap.get("response");
+                log.info("AI response: {}", aiMessage);
 
                 // 사용자 메시지 저장
                 ChatMessage userMessage = ChatMessage.builder()
@@ -188,14 +210,18 @@ public class RagService {
                 // AI 응답 저장
                 ChatMessage assistantMessage = ChatMessage.builder()
                         .role("assistant")
-                        .content(response.getAiMessage())
+                        .content(aiMessage)
                         .build();
                 conversation.addMessage(assistantMessage);
 
                 chatConversationRepository.save(conversation);
+
+                return ChatMessageResponseDto.builder()
+                        .aiMessage(aiMessage)
+                        .build();
             }
 
-            return response;
+            return null;
 
         } catch (WebClientResponseException e) {
             log.error("Relay server returned error while sending chat message - Status: {}, Body: {}",
@@ -392,15 +418,20 @@ public class RagService {
         log.info("Character: {}", request.getCharacterId());
 
         try {
-            Boolean result = relayServerWebClient.post()
+            // AI-NPC 서버 스펙에 맞게 변환
+            Map<String, Object> aiNpcRequest = new HashMap<>();
+            aiNpcRequest.put("session_id", request.getCharacterId());
+            aiNpcRequest.put("current_node", request.getCurrentNodeId());
+
+            Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/update")
-                    .bodyValue(request)
+                    .bodyValue(aiNpcRequest)
                     .retrieve()
-                    .bodyToMono(Boolean.class)
+                    .bodyToMono(Map.class)
                     .block();
 
             log.info("Game progress update result: {}", result);
-            return result != null && result;
+            return result != null;
 
         } catch (WebClientResponseException e) {
             log.warn("Relay server returned error while updating game progress (non-critical) - Status: {}, Body: {}",
@@ -425,15 +456,21 @@ public class RagService {
         log.info("Character: {} ({})", request.getCharacterName(), request.getCharacterId());
 
         try {
-            Boolean result = relayServerWebClient.post()
+            // AI-NPC 서버 스펙에 맞게 변환
+            Map<String, Object> aiNpcRequest = new HashMap<>();
+            aiNpcRequest.put("story_id", request.getStoryId());
+            aiNpcRequest.put("character_name", request.getCharacterName());
+            aiNpcRequest.put("character_description", request.getCharacterDescription());
+
+            Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/character")
-                    .bodyValue(request)
+                    .bodyValue(aiNpcRequest)
                     .retrieve()
-                    .bodyToMono(Boolean.class)
+                    .bodyToMono(Map.class)
                     .block();
 
             log.info("Character set result: {}", result);
-            return result != null && result;
+            return result != null;
 
         } catch (WebClientResponseException e) {
             log.warn("Relay server returned error while setting character (non-critical) - Status: {}, Body: {}",
