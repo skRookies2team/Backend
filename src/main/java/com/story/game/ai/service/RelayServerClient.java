@@ -82,7 +82,7 @@ public class RelayServerClient {
             }
 
             Map<String, Object> response = relayServerWebClient.post()
-                .uri("/ai/generate-image")
+                .uri("/ai-image/generate-image")
                 .bodyValue(aiImageRequest)
                 .retrieve()
                 .bodyToMono(Map.class)

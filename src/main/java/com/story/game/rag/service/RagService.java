@@ -42,7 +42,7 @@ public class RagService {
 
         try {
             Boolean result = relayServerWebClient.post()
-                    .uri("/ai/chat/index-novel")
+                    .uri("/ai-npc/chat/index-novel")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Boolean.class)
