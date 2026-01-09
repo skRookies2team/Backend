@@ -45,8 +45,10 @@ public class RagService {
         try {
             // AI-NPC 서버 스펙에 맞게 변환
             Map<String, Object> aiNpcRequest = new HashMap<>();
-            aiNpcRequest.put("story_id", request.getStoryId());
-            aiNpcRequest.put("s3_key", request.getFileKey());
+            aiNpcRequest.put("session_id", request.getStoryId());
+            aiNpcRequest.put("file_key", request.getFileKey());
+            aiNpcRequest.put("bucket", "pillango-front");
+            aiNpcRequest.put("character_name", request.getTitle());
 
             Map<String, Object> result = relayServerWebClient.post()
                     .uri("/ai-npc/api/ai/train-from-s3")
