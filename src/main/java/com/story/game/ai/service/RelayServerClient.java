@@ -98,11 +98,19 @@ public class RelayServerClient {
                 throw new RuntimeException("No response from relay server");
             }
 
+            // imageUrl에서 fileKey 추출
+            String imageUrl = (String) response.get("image_url");
+            String fileKey = null;
+            if (imageUrl != null && imageUrl.contains(".amazonaws.com/")) {
+                fileKey = imageUrl.substring(imageUrl.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+            }
+
             ImageGenerationResponseDto result = ImageGenerationResponseDto.builder()
-                .imageUrl((String) response.get("image_url"))
+                .imageUrl(imageUrl)
+                .fileKey(fileKey)
                 .build();
 
-            log.info("Image generated successfully: {}", result.getImageUrl());
+            log.info("Image generated successfully: {} (fileKey: {})", result.getImageUrl(), result.getFileKey());
             return result;
 
         } catch (Exception e) {
